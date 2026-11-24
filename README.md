@@ -2,8 +2,6 @@
 
 *Bantam Cascade finds the cheapest small-CPU-model + big-LLM fallback cascade that provably meets a user's accuracy requirement, or says honestly that it cannot certify one.*
 
-> **Naming note:** This project is unrelated to the existing [`bantam`](https://pypi.org/project/bantam/) microservices package on PyPI. Our import package is therefore always `bantam_cascade`, never `bantam`. The PyPI distribution and CLI are both named `bantam-cascade`; the GitHub repository is `bantam-cascade`.
-
 ## Status: early scaffolding
 
 This repository is being built phase by phase. There are **no benchmark results yet** — every number that will eventually appear here must come from a results file produced by a real run. Until then, results are marked **TBD**.
@@ -38,6 +36,10 @@ See [docs/LIMITATIONS.md](docs/LIMITATIONS.md). Nothing here is a guarantee abou
 ## Prior work and credits
 
 Bantam Cascade does **not** claim novelty for distillation, cascades, or threshold selection with guarantees. It builds on TinyDistill, bounded-distill, FrugalGPT, and Learn-then-Test (Angelopoulos, Bates, Candès, Jordan, Lei). Full citations are in [CITATION.cff](CITATION.cff) and [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
+
+## Naming
+
+The name [`bantam`](https://pypi.org/project/bantam/) on PyPI belongs to an unrelated microservices package. That's why this project uses `bantam-cascade` for its distribution, CLI, and repository, and `bantam_cascade` for its Python import.
 
 ## License
 
