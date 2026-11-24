@@ -1,0 +1,51 @@
+cff-version: 1.2.0
+message: "If you use Bantam Cascade, please cite this software and the prior work it builds on."
+title: "Bantam Cascade"
+abstract: "Certifies the cheapest small CPU model plus big LLM fallback cascade for text classification against gold labels."
+version: 0.0.1
+license: Apache-2.0
+type: software
+authors:
+  - name: "Bantam Cascade contributors"
+references:
+  - type: software
+    title: "tinydistill: distil an LLM classification prompt into a small, fast model"
+    authors:
+      - name: "Andreas-Hum"
+    year: 2026
+    license: MIT
+    url: "https://github.com/Andreas-Hum/tinydistill"
+  - type: software
+    title: "bounded-distill: distill your LLM classifier into a small fast model with a statistical bound"
+    authors:
+      - name: "Yerassyl Pirzhanov"
+    year: 2026
+    license: Apache-2.0
+    url: "https://pypi.org/project/bounded-distill/"
+  - type: article
+    title: "FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance"
+    authors:
+      - family-names: "Chen"
+        given-names: "Lingjiao"
+      - family-names: "Zaharia"
+        given-names: "Matei"
+      - family-names: "Zou"
+        given-names: "James"
+    year: 2023
+    url: "https://arxiv.org/abs/2305.05176"
+  - type: article
+    title: "Learn then Test: Calibrating Predictive Algorithms to Achieve Risk Control"
+    authors:
+      - family-names: "Angelopoulos"
+        given-names: "Anastasios N."
+      - family-names: "Bates"
+        given-names: "Stephen"
+      - family-names: "Candès"
+        given-names: "Emmanuel J."
+      - family-names: "Jordan"
+        given-names: "Michael I."
+      - family-names: "Lei"
+        given-names: "Lihua"
+    year: 2021
+    url: "https://arxiv.org/abs/2110.01052"
+    doi: "10.1214/24-AOAS1998"

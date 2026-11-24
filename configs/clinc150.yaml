@@ -1,0 +1,30 @@
+# Template. Replace every <...> value before running.
+# Verified HF id: clinc/clinc_oos, config "imbalanced".
+# In-scope intents only: the "oos" label is excluded (documented in data loading).
+task: intent_classification
+dataset: clinc/clinc_oos
+dataset_config: imbalanced
+exclude_labels: [oos]
+constraints:
+  minimum_accuracy: 0.95
+  confidence_level: 0.95
+  max_p95_latency_ms: 200
+objective: minimize_cost
+teacher:
+  provider: groq
+  model: <exact model id, pinned>
+  prompt_version: v1
+  price_per_million_input_tokens: <user supplied>
+  price_per_million_output_tokens: <user supplied>
+  rate_limits:
+    requests_per_minute: <n>
+    requests_per_day: <n>
+    tokens_per_minute: <n>
+students: [static_embed, minilm_onnx_int8]
+splits:
+  student_train: 4000
+  calibration: 1000
+  certification: 1500
+  seed: 42
+threshold_grid_size: 50
+seed: 42

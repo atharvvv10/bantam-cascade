@@ -1,0 +1,27 @@
+# Synthetic configuration for fast development and CLI tests only.
+# The model id and prices below are FAKE: no real API calls are made in CI.
+task: intent_classification
+dataset: smoke-tiny
+constraints:
+  minimum_accuracy: 0.80
+  confidence_level: 0.90
+  max_p95_latency_ms: 500
+objective: minimize_cost
+teacher:
+  provider: groq
+  model: smoke-fake-model
+  prompt_version: v1
+  price_per_million_input_tokens: 0.0
+  price_per_million_output_tokens: 0.0
+  rate_limits:
+    requests_per_minute: 60
+    requests_per_day: 1000
+    tokens_per_minute: 60000
+students: [static_embed]
+splits:
+  student_train: 40
+  calibration: 20
+  certification: 30
+  seed: 42
+threshold_grid_size: 10
+seed: 42
