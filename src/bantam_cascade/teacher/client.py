@@ -21,7 +21,10 @@ from bantam_cascade.teacher.prompt import build_prompt
 
 GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions"
 _DEFAULT_MAX_ATTEMPTS = 5
-_MAX_COMPLETION_TOKENS = 64
+# gpt-oss models emit hidden reasoning tokens before the final label; a small cap
+# truncates the answer entirely. Give the reasoning enough room to finish.
+_MAX_COMPLETION_TOKENS = 512
+_REASONING_TOKEN_HEADROOM = 160
 
 
 class TeacherError(RuntimeError):
@@ -91,10 +94,10 @@ def estimate_tokens(text: str) -> int:
 
 
 def output_token_estimate(labels: Sequence[str]) -> int:
-    """Estimate completion tokens from the longest allowed label."""
+    """Estimate completion tokens, reserving headroom for hidden reasoning."""
     if not labels:
         raise ValueError("labels must not be empty")
-    return estimate_tokens(max(labels, key=len))
+    return max(estimate_tokens(max(labels, key=len)), _REASONING_TOKEN_HEADROOM)
 
 
 def _parse_retry_after(value: str | None) -> float | None:

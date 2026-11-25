@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import httpx
@@ -77,6 +78,7 @@ def test_label_many_uses_cache_and_parses_usage(
     assert second.totals.cached == 1
     assert len(requests) == 1
     assert requests[0].headers["authorization"].startswith("Bearer ")
+    assert json.loads(requests[0].content)["max_tokens"] >= 256
     assert cache.count(model="smoke-fake-model", prompt_version="v1") == 1
 
 
