@@ -321,6 +321,10 @@ class GroqTeacherClient:
             ],
             "temperature": 0,
             "max_tokens": _MAX_COMPLETION_TOKENS,
+            # gpt-oss models default to high reasoning effort, which consumes the
+            # entire token budget before producing a label. Low effort keeps the
+            # final answer inside the cap while preserving accuracy for this task.
+            "reasoning_effort": "low",
         }
 
     def label_many(
