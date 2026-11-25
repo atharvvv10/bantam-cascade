@@ -42,7 +42,7 @@ The shipped configs pin `openai/gpt-oss-20b` with the user's free-tier limits an
 ```text
 bantam-cascade train-students --config configs/banking77.yaml --run-dir runs/phase2
 bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phase2 --dry-run
-bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phase2
+bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phase2 --calibration-labels runs/phase1/teacher_labels.jsonl
 ```
 
 Students are `static_embed` (TF-IDF + logistic regression, no downloads) and `minilm_onnx_int8` (MiniLM ONNX quantized for CPU). MiniLM needs the optional ONNX dependencies: `pip install -e ".[students]"`. Students train on **gold human labels**; the teacher is used only as the cascade fallback and is also scored against gold. `build-cascade` reads the 200 calibration labels from Phase 1 and labels the certification split with the teacher (resumable via the cache). All outputs go to `runs/phase2/`. These are measurements, not statistical certificates.

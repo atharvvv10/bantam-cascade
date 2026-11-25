@@ -388,6 +388,11 @@ def build_cascade(
         None, "--limit", help="Certification examples (default: full split)."
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Estimate teacher calls only."),
+    calibration_labels: Path | None = typer.Option(
+        None,
+        "--calibration-labels",
+        help="Phase 1 teacher_labels.jsonl (default: <run-dir>/teacher_labels.jsonl).",
+    ),
 ) -> None:
     """Calibrate students and evaluate cascades on gold-labeled certification data."""
     parsed = load_config(config)
@@ -419,7 +424,8 @@ def build_cascade(
         )
         return
 
-    cal_predictions = _read_teacher_rows(run_dir / "teacher_labels.jsonl")
+    cal_path = calibration_labels or run_dir / "teacher_labels.jsonl"
+    cal_predictions = _read_teacher_rows(cal_path)
     missing_calibration = [text for text in split.calibration if text not in cal_predictions]
     if missing_calibration:
         client.close()
