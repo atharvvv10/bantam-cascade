@@ -2,14 +2,14 @@
 
 *Bantam Cascade finds the cheapest small-CPU-model + big-LLM fallback cascade that provably meets a user's accuracy requirement, or says honestly that it cannot certify one.*
 
-## Status: Phase 1 — teacher labeling
+## Status: Phase 2 — CPU students and cascade
 
-This repository is being built phase by phase. Phase 0 (scaffold, config, splits, ledger, CLI) and Phase 1 (Groq teacher client, cache, prompt/parser, dry-run estimator, selection) are complete. There are **no benchmark results yet** — every number that will eventually appear here must come from a results file produced by a real run. Until then, results are marked **TBD**.
+This repository is being built phase by phase. Phase 0 (scaffold, config, splits, ledger, CLI), Phase 1 (Groq teacher client, cache, prompt/parser, dry-run estimator, selection), and Phase 2 (CPU-only students, calibration, cascade measurement) are complete. Statistical certification arrives in Phase 3. Every number that appears here comes from a results file produced by a real run; numbers not yet measured are marked **TBD**.
 
 ## What the finished tool does
 
 1. Takes a labeled text-classification dataset plus a target accuracy, confidence level, and p95 latency budget.
-2. Trains small CPU-only students on teacher-LLM labels, calibrates them, and builds a cascade (student answers when confident, teacher otherwise).
+2. Trains small CPU-only students, calibrates them, and builds a cascade (student answers when confident, teacher otherwise).
 3. Uses finite-sample statistics against **gold human labels** to certify which configurations meet the target.
 4. Returns the cheapest certified configuration, a Pareto frontier, or an honest `INSUFFICIENT_EVIDENCE` / `NO_FEASIBLE_CONFIG` status.
 
@@ -36,6 +36,16 @@ bantam-cascade select-teacher --config configs/banking77.yaml --limit 200
 ```
 
 The shipped configs pin `openai/gpt-oss-20b` with the user's free-tier limits and prices of `0`; all prices are read from config only. Dry run makes no API calls and needs no key.
+
+## Students and cascade (Phase 2)
+
+```text
+bantam-cascade train-students --config configs/banking77.yaml --run-dir runs/phase2
+bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phase2 --dry-run
+bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phase2
+```
+
+Students are `static_embed` (TF-IDF + logistic regression, no downloads) and `minilm_onnx_int8` (MiniLM ONNX quantized for CPU). MiniLM needs the optional ONNX dependencies: `pip install -e ".[students]"`. Students train on **gold human labels**; the teacher is used only as the cascade fallback and is also scored against gold. `build-cascade` reads the 200 calibration labels from Phase 1 and labels the certification split with the teacher (resumable via the cache). All outputs go to `runs/phase2/`. These are measurements, not statistical certificates.
 
 ## How certification works
 

@@ -39,6 +39,7 @@ students = [
   "sentence-transformers==6.3.0",
   "onnx==1.23.2",
   "onnxruntime==1.32.0",
+  "tokenizers==0.23.3",
 ]
 demo = ["gradio==6.32.0"]
 dev = [
@@ -84,7 +85,7 @@ mypy_path = "src"
 packages = ["bantam_cascade"]
 
 [[tool.mypy.overrides]]
-module = ["datasets.*", "gradio.*", "model2vec.*", "onnx.*", "onnxruntime.*", "sentence_transformers.*"]
+module = ["datasets.*", "gradio.*", "joblib.*", "model2vec.*", "onnx.*", "onnxruntime.*", "scikit-learn.*", "sklearn.*", "sentence_transformers.*", "tokenizers.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

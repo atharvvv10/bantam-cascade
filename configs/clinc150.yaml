@@ -22,10 +22,12 @@ teacher:
     requests_per_day: 1000
     tokens_per_minute: 8000
 students: [static_embed, minilm_onnx_int8]
+# Split sizes are sized for the free-tier Groq limits: calibration needs 200
+# teacher calls; certification needs 300.
 splits:
   student_train: 4000
-  calibration: 1000
-  certification: 1500
+  calibration: 200
+  certification: 300
   seed: 42
 threshold_grid_size: 50
 seed: 42

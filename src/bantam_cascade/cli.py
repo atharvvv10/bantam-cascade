@@ -3,17 +3,30 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from shutil import copyfile
+from time import perf_counter
 
+import numpy as np
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from bantam_cascade import __version__
+from bantam_cascade.calibration import select_threshold
+from bantam_cascade.cascade import TeacherPrediction, evaluate_cascade
 from bantam_cascade.config import Config, load_config
 from bantam_cascade.data import load_dataset_for_config
-from bantam_cascade.splits import split_by_hash
+from bantam_cascade.splits import SplitResult, split_by_hash
+from bantam_cascade.students import (
+    StudentModel,
+    StudentReport,
+    build_student,
+    restore_student,
+    save_student,
+)
+from bantam_cascade.students.base import confidence_scores
 from bantam_cascade.teacher.cache import LabelCache
 from bantam_cascade.teacher.client import GroqTeacherClient
 from bantam_cascade.teacher.select import (
@@ -269,3 +282,228 @@ def select_teacher(
                 "[red]Sanity gate failed: teacher is worse than the student baseline.[/red]"
             )
             raise typer.Exit(code=1)
+
+
+def _split_data(config: Config) -> tuple[SplitResult, dict[str, str], tuple[str, ...]]:
+    """Return the disjoint splits, gold labels by text, and in-scope labels."""
+    dataset = load_dataset_for_config(config)
+    gold_by_text = {example.text: example.label for example in dataset.train}
+    official_test = tuple(example.text for example in dataset.test)
+    split = split_by_hash(
+        list(gold_by_text),
+        config=config.splits,
+        official_test=official_test,
+    )
+    return split, gold_by_text, dataset.labels
+
+
+def _read_teacher_rows(path: Path) -> dict[str, TeacherPrediction]:
+    """Read saved teacher rows into a text-keyed prediction map."""
+    if not path.is_file():
+        return {}
+    predictions: dict[str, TeacherPrediction] = {}
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            row = json.loads(line)
+            predictions[row["text"]] = TeacherPrediction(
+                label=row["predicted"],
+                input_tokens=int(row["input_tokens"]),
+                output_tokens=int(row["output_tokens"]),
+                latency_ms=float(row["latency_ms"]),
+            )
+    return predictions
+
+
+def _append_teacher_rows(path: Path, rows: list[dict[str, object]]) -> None:
+    """Append teacher rows to a JSONL file, creating it if needed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _predict_with_latency(
+    student: StudentModel, texts: Sequence[str]
+) -> tuple[np.ndarray, list[float]]:
+    """Predict one text at a time and record per-example CPU latency."""
+    rows: list[np.ndarray] = []
+    latencies: list[float] = []
+    for text in texts:
+        start = perf_counter()
+        proba = np.asarray(student.predict_proba([text]), dtype=np.float64)[0]
+        latencies.append((perf_counter() - start) * 1000.0)
+        rows.append(proba)
+    return np.asarray(rows), latencies
+
+
+@app.command(name="train-students")
+def train_students(
+    config: Path = typer.Option(Path("configs/smoke.yaml"), "--config", "-c"),
+    run_dir: Path = typer.Option(Path("runs/phase2"), "--run-dir", "-o"),
+    limit: int | None = typer.Option(
+        None, "--limit", help="Training examples per student (default: full split)."
+    ),
+) -> None:
+    """Train configured CPU-only students on gold-labeled training texts."""
+    parsed = load_config(config)
+    if limit is not None and limit <= 0:
+        raise typer.BadParameter("--limit must be positive")
+    split, gold_by_text, _labels = _split_data(parsed)
+    train_texts = split.student_train if limit is None else split.student_train[:limit]
+
+    table = Table(title="Student training")
+    table.add_column("Student")
+    table.add_column("Gold train texts")
+    table.add_column("Calibration accuracy")
+    table.add_column("Mean confidence")
+    for name in parsed.students:
+        student = build_student(name)
+        student.fit(train_texts, [gold_by_text[text] for text in train_texts])
+        save_student(student, run_dir / "students" / f"{name}.joblib")
+
+        cal_proba, _latencies = _predict_with_latency(student, split.calibration)
+        gold = [gold_by_text[text] for text in split.calibration]
+        predicted = np.asarray(student.classes)[cal_proba.argmax(axis=1)]
+        report = StudentReport(
+            name=name,
+            examples=len(gold),
+            accuracy=float(np.mean(predicted == np.asarray(gold))),
+            mean_confidence=float(np.mean(confidence_scores(cal_proba))),
+        )
+        table.add_row(
+            report.name,
+            str(len(train_texts)),
+            f"{report.accuracy:.3f}",
+            f"{report.mean_confidence:.3f}",
+        )
+    console.print(table)
+    console.print(f"Saved students under [bold]{run_dir / 'students'}[/bold].")
+
+
+@app.command(name="build-cascade")
+def build_cascade(
+    config: Path = typer.Option(Path("configs/smoke.yaml"), "--config", "-c"),
+    run_dir: Path = typer.Option(Path("runs/phase2"), "--run-dir", "-o"),
+    limit: int | None = typer.Option(
+        None, "--limit", help="Certification examples (default: full split)."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Estimate teacher calls only."),
+) -> None:
+    """Calibrate students and evaluate cascades on gold-labeled certification data."""
+    parsed = load_config(config)
+    if parsed.dataset == "smoke-tiny":
+        raise typer.BadParameter("The smoke config is offline-only. Use a real dataset config.")
+    if limit is not None and limit <= 0:
+        raise typer.BadParameter("--limit must be positive")
+    split, gold_by_text, labels = _split_data(parsed)
+    cert_texts = split.certification if limit is None else split.certification[:limit]
+
+    cache = LabelCache(_cache_path(run_dir))
+    client = GroqTeacherClient(parsed.teacher)
+    if dry_run:
+        estimate = client.dry_run_estimate(
+            cert_texts,
+            labels,
+            cache=cache,
+            limit=len(cert_texts),
+        )
+        client.close()
+        console.print("[bold]Dry run — no API calls made.[/bold]")
+        console.print(
+            f"Certification texts: {estimate.texts} | to call: {estimate.requests} | "
+            f"cached: {estimate.cached}"
+        )
+        console.print(
+            f"Estimated days at {parsed.teacher.rate_limits.requests_per_day} RPD: "
+            f"{estimate.estimated_days}"
+        )
+        return
+
+    cal_predictions = _read_teacher_rows(run_dir / "teacher_labels.jsonl")
+    missing_calibration = [text for text in split.calibration if text not in cal_predictions]
+    if missing_calibration:
+        client.close()
+        raise typer.BadParameter(
+            f"Missing {len(missing_calibration)} calibration teacher labels. "
+            "Run `bantam-cascade label --config ... --run-dir ...` first."
+        )
+
+    cert_path = run_dir / "certification_teacher_labels.jsonl"
+    cert_predictions = _read_teacher_rows(cert_path)
+    missing = [text for text in cert_texts if text not in cert_predictions]
+    try:
+        if missing:
+            batch = client.label_many(missing, labels, cache=cache, limit=len(missing))
+            new_rows: list[dict[str, object]] = [
+                {
+                    "text": result.text,
+                    "gold": gold_by_text[result.text],
+                    "predicted": result.label,
+                    "input_tokens": result.input_tokens,
+                    "output_tokens": result.output_tokens,
+                    "latency_ms": result.latency_ms,
+                    "cached": result.cached,
+                }
+                for result in batch.results
+            ]
+            _append_teacher_rows(cert_path, new_rows)
+            for teacher_result in batch.results:
+                cert_predictions[teacher_result.text] = TeacherPrediction(
+                    label=teacher_result.label,
+                    input_tokens=teacher_result.input_tokens,
+                    output_tokens=teacher_result.output_tokens,
+                    latency_ms=teacher_result.latency_ms,
+                )
+    finally:
+        client.close()
+
+    table = Table(title="Cascade candidates")
+    table.add_column("Student")
+    table.add_column("Threshold")
+    table.add_column("Accuracy")
+    table.add_column("Fallback")
+    table.add_column("Teacher calls")
+    table.add_column("Est. cost")
+    table.add_column("p95 ms")
+    output_path = run_dir / "cascade_results.jsonl"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        for name in parsed.students:
+            student_path = run_dir / "students" / f"{name}.joblib"
+            if not student_path.is_file():
+                raise typer.BadParameter(
+                    f"Missing trained student {student_path}. Run `train-students` first."
+                )
+            student = restore_student(student_path)
+            cal_proba, _cal_latency = _predict_with_latency(student, split.calibration)
+            threshold_result = select_threshold(
+                proba=cal_proba,
+                classes=student.classes,
+                gold=[gold_by_text[text] for text in split.calibration],
+                teacher_predictions=[cal_predictions[text].label for text in split.calibration],
+                grid_size=parsed.threshold_grid_size,
+            )
+            cert_proba, cert_latency = _predict_with_latency(student, cert_texts)
+            result = evaluate_cascade(
+                student=name,
+                threshold=threshold_result.threshold,
+                proba=cert_proba,
+                classes=student.classes,
+                gold=[gold_by_text[text] for text in cert_texts],
+                teacher_predictions=[cert_predictions[text] for text in cert_texts],
+                student_latency_ms=cert_latency,
+                price_per_million_input_tokens=parsed.teacher.price_per_million_input_tokens,
+                price_per_million_output_tokens=parsed.teacher.price_per_million_output_tokens,
+            )
+            handle.write(json.dumps(result.__dict__, ensure_ascii=False) + "\n")
+            table.add_row(
+                name,
+                f"{result.threshold:.3f}",
+                f"{result.accuracy:.3f}",
+                f"{result.fallback_rate:.3f}",
+                str(result.teacher_calls),
+                f"${result.estimated_cost:.6f}",
+                f"{result.p95_latency_ms:.1f}",
+            )
+    console.print(table)
+    console.print(f"Wrote [bold]{output_path}[/bold]. These are measurements, not certificates.")
