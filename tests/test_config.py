@@ -27,9 +27,20 @@ def test_smoke_config_loads() -> None:
     )
 
 
-def test_template_config_rejected_with_placeholders() -> None:
+def test_placeholder_config_rejected(tmp_path: Path) -> None:
+    raw = _smoke_raw()
+    raw["teacher"]["model"] = "<exact model id>"
     with pytest.raises(BantamConfigError, match="unresolved placeholders"):
-        load_config(ROOT / "configs" / "banking77.yaml")
+        load_config(_write(tmp_path, raw))
+
+
+def test_real_dataset_configs_load() -> None:
+    banking = load_config(ROOT / "configs" / "banking77.yaml")
+    clinc = load_config(ROOT / "configs" / "clinc150.yaml")
+    assert banking.teacher.model == "openai/gpt-oss-20b"
+    assert banking.teacher.price_per_million_input_tokens == 0.0
+    assert clinc.dataset == "clinc/clinc_oos"
+    assert clinc.exclude_labels == ["oos"]
 
 
 def test_clinc_config_declares_dataset_options(tmp_path: Path) -> None:

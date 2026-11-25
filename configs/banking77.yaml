@@ -1,4 +1,5 @@
-# Template. Replace every <...> value before running.
+# Default pinned teacher values supplied by the user (free-tier Groq account).
+# Prices are 0 on the free tier; change them only if the account becomes paid.
 task: intent_classification
 dataset: PolyAI/banking77
 constraints:
@@ -8,14 +9,14 @@ constraints:
 objective: minimize_cost
 teacher:
   provider: groq
-  model: <exact model id, pinned>
+  model: openai/gpt-oss-20b
   prompt_version: v1
-  price_per_million_input_tokens: <user supplied>
-  price_per_million_output_tokens: <user supplied>
+  price_per_million_input_tokens: 0.0
+  price_per_million_output_tokens: 0.0
   rate_limits:
-    requests_per_minute: <n>
-    requests_per_day: <n>
-    tokens_per_minute: <n>
+    requests_per_minute: 30
+    requests_per_day: 1000
+    tokens_per_minute: 8000
 students: [static_embed, minilm_onnx_int8]
 splits:
   student_train: 4000

@@ -2,9 +2,9 @@
 
 *Bantam Cascade finds the cheapest small-CPU-model + big-LLM fallback cascade that provably meets a user's accuracy requirement, or says honestly that it cannot certify one.*
 
-## Status: early scaffolding
+## Status: Phase 1 — teacher labeling
 
-This repository is being built phase by phase. There are **no benchmark results yet** — every number that will eventually appear here must come from a results file produced by a real run. Until then, results are marked **TBD**.
+This repository is being built phase by phase. Phase 0 (scaffold, config, splits, ledger, CLI) and Phase 1 (Groq teacher client, cache, prompt/parser, dry-run estimator, selection) are complete. There are **no benchmark results yet** — every number that will eventually appear here must come from a results file produced by a real run. Until then, results are marked **TBD**.
 
 ## What the finished tool does
 
@@ -24,6 +24,18 @@ bantam-cascade init
 ```
 
 Full pipeline usage will be documented after the relevant phases are complete.
+
+## Teacher labeling (Phase 1)
+
+Copy `.env.example` to `.env` in the project root and put your Groq key in it. The file is git-ignored; never commit or print the key.
+
+```text
+bantam-cascade label --config configs/banking77.yaml --dry-run
+bantam-cascade label --config configs/banking77.yaml --limit 200
+bantam-cascade select-teacher --config configs/banking77.yaml --limit 200
+```
+
+The shipped configs pin `openai/gpt-oss-20b` with the user's free-tier limits and prices of `0`; all prices are read from config only. Dry run makes no API calls and needs no key.
 
 ## How certification works
 
