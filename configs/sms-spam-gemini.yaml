@@ -1,0 +1,29 @@
+# Lightweight certifiable benchmark: UCI SMS Spam Collection via a namespaced
+# Hugging Face mirror. The 95% target is unchanged. The word_tfidf student is a
+# CPU-only scikit-learn head; the pinned Gemini Decisions teacher is fallback only.
+task: intent_classification
+dataset: ucirvine/sms_spam
+dataset_config: plain_text
+constraints:
+  minimum_accuracy: 0.95
+  confidence_level: 0.95
+  max_p95_latency_ms: 200
+objective: minimize_cost
+teacher:
+  provider: gemini
+  model: gemini-decision-1
+  prompt_version: v1
+  price_per_million_input_tokens: 0.0
+  price_per_million_output_tokens: 0.0
+  rate_limits:
+    requests_per_minute: 200
+    requests_per_day: 10000
+    tokens_per_minute: 50000
+students: [word_tfidf]
+splits:
+  student_train: 4000
+  calibration: 200
+  certification: 300
+  seed: 42
+threshold_grid_size: 50
+seed: 42

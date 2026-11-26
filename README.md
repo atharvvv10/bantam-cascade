@@ -2,9 +2,9 @@
 
 *Bantam Cascade finds the cheapest small-CPU-model + big-LLM fallback cascade that provably meets a user's accuracy requirement, or says honestly that it cannot certify one.*
 
-## Status: Phase 3 — complete
+## Status: Phases 0–11 — complete
 
-Phase 0 (scaffold, config, splits, ledger, CLI), Phase 1 (Groq and Gemini Decisions teacher clients, cache, prompt/parser, dry-run estimator, selection), Phase 2 (CPU-only students, calibration, cascade measurement), and Phase 3 (Learn-then-Test certification) are complete. Every number that appears here comes from a results file produced by a real run.
+The original plan (Phases 0–3) is complete, and the extended best-version roadmap (Phases 4–11) is complete too. Every number below comes from a real run artifact. The tool now has **one genuine 95% certificate** (SMS Spam) and one honest non-certificate (Banking77). Nothing is claimed that the statistics do not support.
 
 ## What the finished tool does
 
@@ -20,15 +20,35 @@ All cost figures are **ESTIMATES** derived only from prices in the user's config
 ```text
 pip install -e ".[dev]"
 bantam-cascade --help
-bantam-cascade init --config configs/banking77-gemini.yaml --run-dir runs/demo
 
-bantam-cascade label --config configs/banking77-gemini.yaml --run-dir runs/demo --limit 200
-bantam-cascade train-students --config configs/banking77-gemini.yaml --run-dir runs/demo
-bantam-cascade build-cascade --config configs/banking77-gemini.yaml --run-dir runs/demo
-bantam-cascade certify --config configs/banking77-gemini.yaml --run-dir runs/demo
+# Certified path (SMS Spam, pinned Groq teacher, word_tfidf student)
+bantam-cascade init --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
+bantam-cascade label --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
+bantam-cascade train-students --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
+bantam-cascade build-cascade --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
+bantam-cascade certify --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
+
+# Offline demo of a completed run
+bantam-cascade demo "claim your free prize now" --run-dir runs/sms-groq
 ```
 
 `certify` exits non-zero when it cannot issue a certificate; that is an honest result, not a crash.
+
+## Headline result: certified SMS Spam
+
+A single pre-registered `word_tfidf` cascade was tested once on 300 untouched examples from `ucirvine/sms_spam`:
+
+| Item | Value |
+| --- | --- |
+| Target / confidence | 95% / 95% |
+| Measured accuracy | 0.987 (4 errors / 300) |
+| Hoeffding-Bentkus p-value | 0.001878 (`delta = 0.05`, 0 prior looks) |
+| Fallback calls | 0 |
+| Estimated cost | $0.000000 from configured prices |
+| p95 latency | 0.7 ms |
+| Status | **`CERTIFIED`** |
+
+The threshold was frozen in `runs/sms-groq/preregistration.json` before the certification split was read. The result is conditional on the assumptions in [docs/METHODOLOGY.md](docs/METHODOLOGY.md); see [docs/RESULTS.md](docs/RESULTS.md) for the full record and the separate Banking77 non-certificate.
 
 ## Teacher labeling (Phase 1)
 
@@ -54,7 +74,7 @@ Measured on the same 200 gold calibration labels (local run artifacts are git-ig
 
 Sources: `runs/phase1/teacher_labels.jsonl` and `runs/phase1-gemini/teacher_labels.jsonl`. The four-example gap is a measurement, not a statistical certificate.
 
-## Students and cascade (Phase 2)
+## Students and cascade (Phases 2 and 4)
 
 ```text
 bantam-cascade train-students --config configs/banking77.yaml --run-dir runs/phase2
@@ -62,7 +82,7 @@ bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phas
 bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phase2 --calibration-labels runs/phase1/teacher_labels.jsonl
 ```
 
-Students are `static_embed` (TF-IDF + logistic regression, no downloads) and `minilm_onnx_int8` (MiniLM ONNX quantized for CPU). MiniLM needs the optional ONNX dependencies: `pip install -e ".[students]"`. Students train on **gold human labels**; the teacher is used only as the cascade fallback and is also scored against gold. `build-cascade` reads the 200 calibration labels from Phase 1 and labels the certification split with the teacher (resumable via the cache). All outputs go to `runs/phase2/`. These are measurements, not statistical certificates.
+Students are `static_embed` (word TF-IDF + logistic regression, no downloads), `word_tfidf` (word 1–2 gram TF-IDF + logistic regression, the certified student), and `minilm_onnx_int8`/`fp32` (MiniLM ONNX for CPU). MiniLM needs the optional ONNX dependencies: `pip install -e ".[students]"`. Students train on **gold human labels**; the teacher is used only as the cascade fallback and is also scored against gold. `build-cascade` reads the 200 calibration labels and labels the certification split with the teacher (resumable via the cache). All outputs go to the selected `--run-dir`. Measurements are not certificates unless the pre-registered Learn-then-Test procedure accepts them.
 
 With the Gemini fallback and its matching calibration labels on 300 certification examples (`runs/phase2-gemini/cascade_results.jsonl`): `static_embed` measured 0.837 accuracy with 11 fallback calls and 1.5 ms p95; `minilm_onnx_int8` measured 0.920 accuracy with 1 fallback call and 7.3 ms p95. Both are measurements, not certificates.
 

@@ -7,6 +7,7 @@ import pytest
 from bantam_cascade.students import (
     MiniLMOnnxStudent,
     StaticEmbedStudent,
+    WordTfidfStudent,
     build_student,
     restore_student,
     save_student,
@@ -47,6 +48,38 @@ def test_static_embed_trains_and_predicts(tmp_path: Path) -> None:
     assert np.allclose(restored.predict_proba(["billing charge"]), proba[:1])
 
 
+def test_word_tfidf_trains_and_restores(tmp_path: Path) -> None:
+    student = WordTfidfStudent()
+    texts = [
+        "free free prize prize now now",
+        "urgent urgent win win cash cash",
+        "free prize claim claim now",
+        "urgent win cash offer offer",
+        "meeting meeting at at ten ten",
+        "lunch lunch tomorrow tomorrow noon noon",
+        "meeting at ten today today",
+        "lunch at noon today",
+        "project notes attached attached",
+        "please review review report report",
+    ]
+    labels = ["spam", "spam", "spam", "spam", "ham", "ham", "ham", "ham", "ham", "ham"]
+    student.fit(texts, labels)
+    assert student.classes == ("ham", "spam")
+    proba = student.predict_proba(["claim your prize", "lunch at noon"])
+    assert proba.shape == (2, 2)
+    assert np.allclose(proba.sum(axis=1), 1.0)
+    assert labels_from_proba(proba, student.classes)[0] == "spam"
+
+    path = tmp_path / "word_tfidf.joblib"
+    save_student(student, path)
+    restored = restore_student(path)
+    assert isinstance(restored, WordTfidfStudent)
+    assert np.allclose(restored.predict_proba(["claim your prize"]), proba[:1])
+
+    with pytest.raises(ValueError, match="not a word_tfidf"):
+        WordTfidfStudent.from_artifact(StudentArtifact("static_embed", ("ham", "spam"), {}))
+
+
 def test_static_embed_rejects_bad_inputs() -> None:
     student = StaticEmbedStudent()
     with pytest.raises(RuntimeError, match="fit"):
@@ -78,6 +111,7 @@ def test_student_report_validates() -> None:
 
 def test_build_student_names() -> None:
     assert isinstance(build_student("static_embed"), StaticEmbedStudent)
+    assert isinstance(build_student("word_tfidf"), WordTfidfStudent)
     int8 = build_student("minilm_onnx_int8")
     fp32 = build_student("minilm_onnx_fp32")
     assert isinstance(int8, MiniLMOnnxStudent) and int8.quantized

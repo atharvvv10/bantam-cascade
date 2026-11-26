@@ -48,9 +48,14 @@ A SQLite ledger records `(split hash, candidate thresholds, delta)` for every ce
 
 A certificate says nothing about shifted deployment data, a changed teacher model, or unverified teacher labels.
 
-## Current measured outcome
+## Current measured outcomes
 
-On the 300-example certification split with the Gemini fallback, both candidates failed to reject the 5%-error null at `delta = 0.05`; see `runs/phase2-gemini/certification_result.json` (a local, git-ignored run artifact). The result is `INSUFFICIENT_EVIDENCE`, not a certificate.
+Two real runs exist; see [RESULTS.md](RESULTS.md) for the full tables.
+
+- **SMS Spam, pinned Groq teacher, `word_tfidf` student:** 4 errors / 300, p-value 0.001878 at `alpha = delta = 0.05`, zero prior looks, `CERTIFIED`. The threshold was 0.000 (student-only) and was frozen in `runs/sms-groq/preregistration.json` before certification data was read.
+- **Banking77, pinned Gemini teacher:** 24 errors / 300 for `minilm_onnx_int8` and 49 / 300 for `static_embed`, both p-values 1.000 at `delta = 0.05`, `INSUFFICIENT_EVIDENCE`. No certificate is claimed there.
+
+A Gemini Decisions attempt on SMS Spam was blocked by the provider's prohibited-content policy before any certification labels were produced, so it is not part of either outcome.
 
 ## Prior work
 

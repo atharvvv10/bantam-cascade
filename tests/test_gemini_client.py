@@ -7,7 +7,7 @@ import pytest
 import bantam_cascade.teacher.client as client_module
 from bantam_cascade.config import load_config
 from bantam_cascade.teacher.cache import LabelCache
-from bantam_cascade.teacher.client import GroqTeacherClient, MissingAPIKeyError
+from bantam_cascade.teacher.client import GroqTeacherClient, MissingAPIKeyError, TeacherError
 from bantam_cascade.teacher.factory import build_teacher_client
 from bantam_cascade.teacher.gemini import GeminiDecisionClient
 
@@ -54,6 +54,27 @@ def _success_response(choice: str = "billing") -> httpx.Response:
             },
         },
     )
+
+
+def test_http_error_includes_truncated_body_without_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text='{"error":{"message":"Input blocked"}}')
+
+    client = GeminiDecisionClient(
+        _gemini_config(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=_Clock().sleep,
+        now=_Clock(),
+    )
+    try:
+        with pytest.raises(TeacherError, match="HTTP 400.*Input blocked"):
+            client.label_many(["hello"], LABELS, cache=LabelCache(tmp_path / "cache.sqlite3"))
+    finally:
+        client.close()
 
 
 def test_label_many_posts_choice_question_and_caches_confidence(

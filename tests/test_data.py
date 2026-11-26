@@ -37,14 +37,40 @@ def test_unsupported_dataset_raises() -> None:
 class _FakeSplit:
     """Minimal stand-in for a Hugging Face dataset split."""
 
-    def __init__(self, rows: list[dict[str, object]], names: list[str]) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, object]],
+        names: list[str],
+        *,
+        label_field: str = "intent",
+    ) -> None:
         """Store rows and ClassLabel names."""
         self.rows = rows
-        self.features = {"intent": SimpleNamespace(names=names)}
+        self.features = {label_field: SimpleNamespace(names=names)}
 
     def __iter__(self) -> object:
         """Iterate over fake rows."""
         return iter(self.rows)
+
+
+def test_sms_spam_loader_without_official_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    train = _FakeSplit(
+        [
+            {"sms": "free prize now", "label": 1},
+            {"sms": "meeting at ten", "label": 0},
+        ],
+        ["ham", "spam"],
+        label_field="label",
+    )
+    monkeypatch.setattr(data, "load_dataset", lambda *args: {"train": train})
+
+    config = load_config(ROOT / "configs" / "sms-spam-gemini.yaml")
+    dataset = load_dataset_for_config(config)
+
+    assert dataset.labels == ("ham", "spam")
+    assert [example.text for example in dataset.train] == ["free prize now", "meeting at ten"]
+    assert [example.label for example in dataset.train] == ["spam", "ham"]
+    assert dataset.test == ()
 
 
 def test_hf_label_mapping_and_exclusion(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -92,7 +92,7 @@ def _load_hf_dataset(
     raw = load_dataset(path, name) if name is not None else load_dataset(path)
     try:
         train_rows = raw["train"]
-        test_rows = raw["test"]
+        test_rows = raw.get("test", [])
         names_value = train_rows.features[label_field].names
     except (KeyError, AttributeError, TypeError) as exc:
         raise DataError(f"Unexpected schema for dataset {path!r}") from exc
@@ -149,5 +149,13 @@ def load_dataset_for_config(config: Config) -> Dataset:
             name=config.dataset_config or "imbalanced",
             text_field="text",
             label_field="intent",
+        )
+    if config.dataset == "ucirvine/sms_spam":
+        return _load_hf_dataset(
+            config,
+            path="ucirvine/sms_spam",
+            name=config.dataset_config or "plain_text",
+            text_field="sms",
+            label_field="label",
         )
     raise DataError(f"Unsupported dataset: {config.dataset!r}")

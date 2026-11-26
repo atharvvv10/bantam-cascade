@@ -1,0 +1,29 @@
+# SMS Spam benchmark with the pinned Groq teacher as fallback. Gemini Decisions
+# blocked one or more certification messages under its prohibited-content policy,
+# so this run uses the secondary free provider. The 95% target is unchanged.
+task: intent_classification
+dataset: ucirvine/sms_spam
+dataset_config: plain_text
+constraints:
+  minimum_accuracy: 0.95
+  confidence_level: 0.95
+  max_p95_latency_ms: 200
+objective: minimize_cost
+teacher:
+  provider: groq
+  model: openai/gpt-oss-20b
+  prompt_version: v1
+  price_per_million_input_tokens: 0.0
+  price_per_million_output_tokens: 0.0
+  rate_limits:
+    requests_per_minute: 30
+    requests_per_day: 1000
+    tokens_per_minute: 8000
+students: [word_tfidf]
+splits:
+  student_train: 4000
+  calibration: 200
+  certification: 300
+  seed: 42
+threshold_grid_size: 50
+seed: 42

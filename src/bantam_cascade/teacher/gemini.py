@@ -100,7 +100,8 @@ class GeminiDecisionClient:
                 continue
 
             if response.status_code >= 400:
-                raise TeacherError(f"Gemini API returned HTTP {response.status_code}.")
+                detail = response.text[:500].replace("\n", " ")
+                raise TeacherError(f"Gemini API returned HTTP {response.status_code}: {detail}")
             try:
                 data: Any = response.json()
             except ValueError as exc:

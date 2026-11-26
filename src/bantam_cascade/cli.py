@@ -99,6 +99,60 @@ def init(
     console.print("Next: label, train-students, build-cascade, then certify using this --run-dir.")
 
 
+@app.command()
+def demo(
+    text: str = typer.Argument(..., help="Text to classify with the saved student."),
+    run_dir: Path = typer.Option(
+        Path("runs/sms-groq"),
+        "--run-dir",
+        "-o",
+        help="Completed run directory containing config.yaml and a saved student.",
+    ),
+) -> None:
+    """Classify one text offline; no teacher API calls are made."""
+    config_path = run_dir / "config.yaml"
+    if not config_path.is_file():
+        raise typer.BadParameter(f"Missing {config_path}. Run `bantam-cascade init` first.")
+    parsed = load_config(config_path)
+    if len(parsed.students) != 1:
+        raise typer.BadParameter("demo expects a run with exactly one configured student")
+    name = parsed.students[0]
+    student_path = run_dir / "students" / f"{name}.joblib"
+    if not student_path.is_file():
+        raise typer.BadParameter(
+            f"Missing trained student {student_path}. Run `train-students` first."
+        )
+
+    student = restore_student(student_path)
+    proba = np.asarray(student.predict_proba([text]), dtype=np.float64)[0]
+    label = student.classes[int(proba.argmax())]
+    confidence = float(proba.max())
+
+    threshold = 0.0
+    preregistration = run_dir / "preregistration.json"
+    if preregistration.is_file():
+        payload = json.loads(preregistration.read_text(encoding="utf-8"))
+        value = payload.get("selected_threshold")
+        if isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0:
+            threshold = float(value)
+
+    table = Table(title="Bantam Cascade demo")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Student", name)
+    table.add_row("Predicted label", label)
+    table.add_row("Confidence", f"{confidence:.3f}")
+    table.add_row("Pre-registered threshold", f"{threshold:.3f}")
+    table.add_row(
+        "Cascade action",
+        "student answers" if confidence >= threshold else "teacher fallback would be used",
+    )
+    console.print(table)
+    if confidence < threshold:
+        console.print("[yellow]Teacher fallback is not called in demo mode.[/yellow]")
+    console.print("Demo uses saved artifacts only; it does not re-run certification.")
+
+
 def _calibration_data(
     config: Config,
     limit: int | None,

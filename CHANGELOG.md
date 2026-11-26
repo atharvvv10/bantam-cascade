@@ -2,7 +2,7 @@
 
 All notable changes to Bantam Cascade are documented here.
 
-## [Unreleased]
+## [0.1.0] - 2026-11-26
 
 ### Added
 - Phase 0: package scaffold, pydantic configuration validation, deterministic hash-based splits, single-use certification ledger, typer CLI skeleton, and CI workflow.
@@ -15,3 +15,20 @@ All notable changes to Bantam Cascade are documented here.
 - On 300 certification examples, `static_embed` measured 0.837 accuracy with 11 teacher calls and 1.5 ms p95; `minilm_onnx_int8` measured 0.920 accuracy with 1 teacher call and 7.3 ms p95.
 - Certification against the configured 95% target returned `INSUFFICIENT_EVIDENCE`: both cascades produced p-value 1.000 at alpha = delta = 0.05, and no certificate was claimed.
 - Full details are in [docs/RESULTS.md](docs/RESULTS.md).
+
+### Phases 4–7: real 95% certificate
+- Added a calibration-only benchmark probe across five free datasets; selected `ucirvine/sms_spam` after word TF-IDF reached 98.5% calibration accuracy without touching certification data.
+- Added the CPU-only `word_tfidf` student and namespaced SMS Spam dataset support, with offline tests.
+- Added pre-registration before the certification look: config hash, split fingerprint, frozen threshold, and decision rule.
+- Gemini Decisions blocked certification SMS messages under its prohibited-content policy; that attempt produced no certification labels and was discarded.
+- Pivoted to the pinned Groq `openai/gpt-oss-20b` teacher with a fresh run and fresh pre-registration. The calibration-only threshold search selected student-only prediction (threshold 0.000).
+- Certification on 300 held-out SMS Spam examples returned `CERTIFIED`: 4 errors / 300 (0.987 measured accuracy), p-value 0.001878 at alpha = delta = 0.05, 0 fallback calls, $0.000000 estimated cost, 0.7 ms p95.
+- Fixed a reporting inconsistency where rejected candidates were serialized with `certified: false` even though they appeared in `certified` and `chosen`.
+- Gemini client errors now include a truncated response body for diagnosis; the API key is still never logged.
+
+### Phases 8–11: verification, release, demo, and hardening
+- Verified the frozen config hash and split fingerprint against pre-registration, confirmed zero prior looks, recomputed the Hoeffding-Bentkus p-value, and checked that the certificate would survive one extra look.
+- Added an offline `demo` command that classifies one text from saved student artifacts without API calls and without re-running certification.
+- Added a regression test proving Gemini HTTP errors include a truncated response body but never the key.
+- Bumped the package, citation, and runtime version to 0.1.0; included the shipped configs and docs in the sdist; built the sdist and wheel; passed `twine check`; and verified no `.env` or run artifacts are packaged.
+- Final gates: `ruff check .`, `ruff format --check .`, `mypy`, and 96 passing `pytest` tests.

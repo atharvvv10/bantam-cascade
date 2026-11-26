@@ -119,6 +119,7 @@ def test_certification_selects_cheapest_rejected_candidate() -> None:
     )
     assert outcome.status == "CERTIFIED"
     assert len(outcome.certified) == 2
+    assert [item.certified for item in outcome.candidates] == [True, True]
     assert outcome.chosen is not None
     assert outcome.chosen.student == "static"
     assert outcome.to_dict()["status"] == "CERTIFIED"
@@ -135,6 +136,7 @@ def test_first_failure_prevents_later_rejections() -> None:
     )
     assert outcome.status == "INSUFFICIENT_EVIDENCE"
     assert outcome.certified == ()
+    assert [item.certified for item in outcome.candidates] == [False, False]
     assert outcome.chosen is None
 
 

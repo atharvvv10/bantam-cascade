@@ -238,7 +238,9 @@ def certify_candidates(
         )
 
     rejected = fixed_sequence_rejections([item.p_value for item in evaluations], delta)
-    certified = tuple(replace(evaluations[index], certified=True) for index in rejected)
+    for index in rejected:
+        evaluations[index] = replace(evaluations[index], certified=True)
+    certified = tuple(evaluations[index] for index in rejected)
     feasible = [item for item in certified if item.latency_ok]
     chosen = (
         min(

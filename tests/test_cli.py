@@ -35,6 +35,27 @@ def test_init_copies_config(tmp_path: Path) -> None:
     assert (run_dir / "config.yaml").is_file()
 
 
+def test_demo_classifies_offline(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    config = ROOT / "configs" / "smoke.yaml"
+    assert (
+        runner.invoke(app, ["init", "--config", str(config), "--run-dir", str(run_dir)]).exit_code
+        == 0
+    )
+    assert (
+        runner.invoke(
+            app,
+            ["train-students", "--config", str(config), "--run-dir", str(run_dir)],
+        ).exit_code
+        == 0
+    )
+    result = runner.invoke(app, ["demo", "billing invoice help", "--run-dir", str(run_dir)])
+    assert result.exit_code == 0, result.stdout
+    assert "Predicted label" in result.stdout
+    assert "static_embed" in result.stdout
+    assert "does not re-run certification" in result.stdout
+
+
 def test_init_rejects_missing_config(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
