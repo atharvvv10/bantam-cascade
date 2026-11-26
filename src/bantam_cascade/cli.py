@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -15,9 +16,20 @@ from rich.table import Table
 
 from bantam_cascade import __version__
 from bantam_cascade.calibration import select_threshold
-from bantam_cascade.cascade import TeacherPrediction, evaluate_cascade
+from bantam_cascade.cascade import CascadeResult, TeacherPrediction, evaluate_cascade
+from bantam_cascade.certification import (
+    CERTIFICATION_ASSUMPTIONS,
+    Candidate,
+    certify_candidates,
+    delta_from_confidence_level,
+)
 from bantam_cascade.config import Config, load_config
 from bantam_cascade.data import load_dataset_for_config
+from bantam_cascade.ledger import (
+    CertificationLedger,
+    CertificationReuseError,
+    corrected_delta,
+)
 from bantam_cascade.splits import SplitResult, split_by_hash
 from bantam_cascade.students import (
     StudentModel,
@@ -84,9 +96,7 @@ def init(
     target = run_dir / "config.yaml"
     copyfile(config, target)
     console.print(f"Created [bold]{target}[/bold].")
-    console.print(
-        "Next: fill in any placeholders, then run the pipeline (commands arrive in later phases)."
-    )
+    console.print("Next: label, train-students, build-cascade, then certify using this --run-dir.")
 
 
 def _calibration_data(
@@ -319,6 +329,21 @@ def _read_teacher_rows(path: Path) -> dict[str, TeacherPrediction]:
     return predictions
 
 
+def _read_teacher_gold(path: Path) -> dict[str, str]:
+    """Read the saved gold labels so certification can verify their provenance."""
+    if not path.is_file():
+        return {}
+    gold_by_text: dict[str, str] = {}
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            row = json.loads(line)
+            gold = row.get("gold")
+            if not isinstance(gold, str):
+                raise typer.BadParameter(f"Missing gold label in {path}.")
+            gold_by_text[str(row["text"])] = gold
+    return gold_by_text
+
+
 def _append_teacher_rows(path: Path, rows: list[dict[str, object]]) -> None:
     """Append teacher rows to a JSONL file, creating it if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -521,3 +546,260 @@ def build_cascade(
             )
     console.print(table)
     console.print(f"Wrote [bold]{output_path}[/bold]. These are measurements, not certificates.")
+
+
+def _cascade_results(path: Path) -> dict[str, CascadeResult]:
+    """Load measured cascade rows keyed by student name."""
+    if not path.is_file():
+        raise typer.BadParameter(f"Missing {path}. Run `bantam-cascade build-cascade ...` first.")
+    results: dict[str, CascadeResult] = {}
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                result = CascadeResult(**row)
+                if result.student in results:
+                    raise typer.BadParameter(
+                        f"Duplicate cascade result for {result.student!r} on line {line_number}."
+                    )
+                results[result.student] = result
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise typer.BadParameter(f"Invalid cascade results in {path}: {exc}") from exc
+    return results
+
+
+def _split_hash(texts: Sequence[str]) -> str:
+    """Hash the certification texts so the ledger can detect repeated looks."""
+    digest = hashlib.sha256()
+    for text in texts:
+        encoded = text.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, byteorder="big"))
+        digest.update(encoded)
+    return digest.hexdigest()
+
+
+@app.command()
+def certify(
+    config: Path = typer.Option(Path("configs/smoke.yaml"), "--config", "-c"),
+    run_dir: Path = typer.Option(Path("runs/phase2"), "--run-dir", "-o"),
+    calibration_labels: Path | None = typer.Option(
+        None,
+        "--calibration-labels",
+        help="Phase 1 teacher_labels.jsonl (default: <run-dir>/teacher_labels.jsonl).",
+    ),
+    ledger: Path | None = typer.Option(
+        None,
+        "--ledger",
+        help="Certification ledger (default: <run-dir>/certification_ledger.sqlite3).",
+    ),
+    allow_reuse: bool = typer.Option(
+        False,
+        "--allow-reuse",
+        help="Permit another look at this split and apply the multiple-looks correction.",
+    ),
+) -> None:
+    """Certify pre-registered cascades with Learn-then-Test on gold labels."""
+    parsed = load_config(config)
+    split, gold_by_text, _labels = _split_data(parsed)
+    calibration_texts = split.calibration
+    certification_texts = split.certification
+    calibration_gold = [gold_by_text[text] for text in calibration_texts]
+
+    calibration_path = calibration_labels or run_dir / "teacher_labels.jsonl"
+    certification_path = run_dir / "certification_teacher_labels.jsonl"
+    calibration_predictions = _read_teacher_rows(calibration_path)
+    certification_predictions = _read_teacher_rows(certification_path)
+    missing_calibration = [
+        text for text in calibration_texts if text not in calibration_predictions
+    ]
+    missing_certification = [
+        text for text in certification_texts if text not in certification_predictions
+    ]
+    if missing_calibration:
+        raise typer.BadParameter(
+            f"Missing {len(missing_calibration)} calibration teacher labels. "
+            "Run `bantam-cascade label ...` first."
+        )
+    if missing_certification:
+        raise typer.BadParameter(
+            f"Missing {len(missing_certification)} certification teacher labels. "
+            "Run `bantam-cascade build-cascade ...` first."
+        )
+
+    calibration_gold_rows = _read_teacher_gold(calibration_path)
+    certification_gold_rows = _read_teacher_gold(certification_path)
+    wrong_calibration_gold = [
+        text for text in calibration_texts if calibration_gold_rows.get(text) != gold_by_text[text]
+    ]
+    wrong_certification_gold = [
+        text
+        for text in certification_texts
+        if certification_gold_rows.get(text) != gold_by_text[text]
+    ]
+    if wrong_calibration_gold or wrong_certification_gold:
+        raise typer.BadParameter(
+            "Saved gold labels do not match the dataset for "
+            f"{len(wrong_calibration_gold)} calibration and "
+            f"{len(wrong_certification_gold)} certification examples."
+        )
+
+    measured = _cascade_results(run_dir / "cascade_results.jsonl")
+    missing_students = [name for name in parsed.students if name not in measured]
+    extra_students = [name for name in measured if name not in parsed.students]
+    if missing_students or extra_students:
+        raise typer.BadParameter(
+            "Cascade results do not match configured students. "
+            f"Missing: {missing_students or 'none'}; unexpected: {extra_students or 'none'}."
+        )
+    for name, result in measured.items():
+        if result.examples != len(certification_texts):
+            raise typer.BadParameter(
+                f"{name} measured {result.examples} examples but the certification split has "
+                f"{len(certification_texts)}. Re-run build-cascade with the full split."
+            )
+
+    split_hash = _split_hash(certification_texts)
+    ledger_path = ledger or run_dir / "certification_ledger.sqlite3"
+    certification_ledger = CertificationLedger(ledger_path)
+    try:
+        prior_looks = certification_ledger.check(split_hash, allow_reuse=allow_reuse)
+    except CertificationReuseError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    base_delta = delta_from_confidence_level(parsed.constraints.confidence_level)
+    test_delta = corrected_delta(base_delta, prior_looks)
+
+    restored: dict[str, StudentModel] = {}
+    candidates: list[Candidate] = []
+    for name in parsed.students:
+        student_path = run_dir / "students" / f"{name}.joblib"
+        if not student_path.is_file():
+            raise typer.BadParameter(
+                f"Missing trained student {student_path}. Run `train-students` first."
+            )
+        if name not in restored:
+            restored[name] = restore_student(student_path)
+        student = restored[name]
+        result = measured[name]
+        calibration_proba, calibration_latency = _predict_with_latency(student, calibration_texts)
+        selected = select_threshold(
+            proba=calibration_proba,
+            classes=student.classes,
+            gold=calibration_gold,
+            teacher_predictions=[calibration_predictions[text].label for text in calibration_texts],
+            grid_size=parsed.threshold_grid_size,
+        )
+        if abs(selected.threshold - result.threshold) > 1e-9:
+            raise typer.BadParameter(
+                f"{name} used threshold {result.threshold:.6f}, but calibration data select "
+                f"{selected.threshold:.6f}. Re-run build-cascade with matching labels."
+            )
+        calibration_result = evaluate_cascade(
+            student=name,
+            threshold=result.threshold,
+            proba=calibration_proba,
+            classes=student.classes,
+            gold=calibration_gold,
+            teacher_predictions=[calibration_predictions[text] for text in calibration_texts],
+            student_latency_ms=calibration_latency,
+            price_per_million_input_tokens=parsed.teacher.price_per_million_input_tokens,
+            price_per_million_output_tokens=parsed.teacher.price_per_million_output_tokens,
+        )
+        candidates.append(
+            Candidate(
+                student=name,
+                threshold=result.threshold,
+                calibration=calibration_result,
+                certification=result,
+            )
+        )
+
+    # The order uses only calibration-split measurements. After this point no
+    # certification data is used to change the sequence of hypotheses.
+    candidates.sort(
+        key=lambda item: (
+            -item.calibration.accuracy,
+            item.calibration.estimated_cost,
+            item.calibration.fallback_rate,
+            item.student,
+        )
+    )
+    outcome = certify_candidates(
+        candidates,
+        minimum_accuracy=parsed.constraints.minimum_accuracy,
+        delta=test_delta,
+        max_p95_latency_ms=parsed.constraints.max_p95_latency_ms,
+    )
+    certification_ledger.record(
+        split_hash,
+        [f"{item.student}:{item.threshold:.6f}" for item in candidates],
+        delta=test_delta,
+        allow_reuse=allow_reuse,
+        prior_looks=prior_looks,
+    )
+
+    output_path = run_dir / "certification_result.json"
+    payload = outcome.to_dict()
+    payload.update(
+        {
+            "split_hash": split_hash,
+            "base_delta": base_delta,
+            "prior_looks": prior_looks,
+            "provider": parsed.teacher.provider,
+            "model": parsed.teacher.model,
+            "prompt_version": parsed.teacher.prompt_version,
+            "candidate_ordering": "calibration accuracy desc, then cost, fallback, name",
+            "ledger": str(ledger_path),
+        }
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    table = Table(title="Learn-then-Test certification")
+    table.add_column("Student")
+    table.add_column("Threshold")
+    table.add_column("Errors")
+    table.add_column("Accuracy")
+    table.add_column("p-value")
+    table.add_column(f"delta={test_delta:.4f}")
+    table.add_column("Rejected")
+    table.add_column("p95 ms")
+    for item in outcome.candidates:
+        table.add_row(
+            item.student,
+            f"{item.threshold:.3f}",
+            str(item.errors),
+            f"{item.measured_accuracy:.3f}",
+            f"{item.p_value:.4g}",
+            f"{item.delta:.4f}",
+            "yes" if item.certified else "no",
+            f"{item.p95_latency_ms:.1f}",
+        )
+    console.print(table)
+    console.print(
+        f"Status: [bold]{outcome.status}[/bold] | target accuracy: "
+        f"{parsed.constraints.minimum_accuracy:.3f} | confidence: "
+        f"{parsed.constraints.confidence_level:.3f}"
+    )
+    if outcome.chosen is not None:
+        console.print(
+            f"Cheapest certified cascade: [bold]{outcome.chosen.student}[/bold] "
+            f"(threshold {outcome.chosen.threshold:.3f}, "
+            f"estimated cost ${outcome.chosen.estimated_cost:.6f}, "
+            f"p95 {outcome.chosen.p95_latency_ms:.1f} ms)."
+        )
+    else:
+        console.print(
+            "[yellow]No certified configuration satisfies accuracy, confidence, and "
+            "latency constraints.[/yellow]"
+        )
+    console.print("Assumptions attached to any certified claim:")
+    for assumption in CERTIFICATION_ASSUMPTIONS:
+        console.print(f"  - {assumption}")
+    console.print(f"Wrote [bold]{output_path}[/bold].")
+    if outcome.status != "CERTIFIED":
+        raise typer.Exit(code=1)

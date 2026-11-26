@@ -98,11 +98,21 @@ class CertificationLedger:
         *,
         delta: float,
         allow_reuse: bool = False,
+        prior_looks: int | None = None,
     ) -> int:
-        """Record a certification run and return the number of prior looks."""
+        """Record a certification run and return the number of prior looks.
+
+        Pass ``prior_looks`` when :meth:`check` was already called, avoiding a
+        duplicate reuse warning.
+        """
         if not 0.0 < delta < 1.0:
             raise ValueError(f"delta must be in (0, 1), got {delta}")
-        looks = self.check(split_hash, allow_reuse=allow_reuse)
+        if prior_looks is None:
+            looks = self.check(split_hash, allow_reuse=allow_reuse)
+        else:
+            if prior_looks < 0:
+                raise ValueError("prior_looks must be non-negative")
+            looks = prior_looks
         with self._connect() as conn:
             conn.execute(
                 """

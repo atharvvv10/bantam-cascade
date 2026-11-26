@@ -2,9 +2,9 @@
 
 *Bantam Cascade finds the cheapest small-CPU-model + big-LLM fallback cascade that provably meets a user's accuracy requirement, or says honestly that it cannot certify one.*
 
-## Status: Phase 2 — CPU students, cascade, and provider choice
+## Status: Phase 3 — complete
 
-This repository is being built phase by phase. Phase 0 (scaffold, config, splits, ledger, CLI), Phase 1 (Groq and Gemini Decisions teacher clients, cache, prompt/parser, dry-run estimator, selection), and Phase 2 (CPU-only students, calibration, cascade measurement) are complete. Statistical certification arrives in Phase 3. Every number that appears here comes from a results file produced by a real run; numbers not yet measured are marked **TBD**.
+Phase 0 (scaffold, config, splits, ledger, CLI), Phase 1 (Groq and Gemini Decisions teacher clients, cache, prompt/parser, dry-run estimator, selection), Phase 2 (CPU-only students, calibration, cascade measurement), and Phase 3 (Learn-then-Test certification) are complete. Every number that appears here comes from a results file produced by a real run.
 
 ## What the finished tool does
 
@@ -15,15 +15,20 @@ This repository is being built phase by phase. Phase 0 (scaffold, config, splits
 
 All cost figures are **ESTIMATES** derived only from prices in the user's config. The word "certified" always appears with its assumptions attached.
 
-## Quickstart (TBD)
+## Quickstart
 
 ```text
 pip install -e ".[dev]"
 bantam-cascade --help
-bantam-cascade init
+bantam-cascade init --config configs/banking77-gemini.yaml --run-dir runs/demo
+
+bantam-cascade label --config configs/banking77-gemini.yaml --run-dir runs/demo --limit 200
+bantam-cascade train-students --config configs/banking77-gemini.yaml --run-dir runs/demo
+bantam-cascade build-cascade --config configs/banking77-gemini.yaml --run-dir runs/demo
+bantam-cascade certify --config configs/banking77-gemini.yaml --run-dir runs/demo
 ```
 
-Full pipeline usage will be documented after the relevant phases are complete.
+`certify` exits non-zero when it cannot issue a certificate; that is an honest result, not a crash.
 
 ## Teacher labeling (Phase 1)
 
@@ -61,9 +66,28 @@ Students are `static_embed` (TF-IDF + logistic regression, no downloads) and `mi
 
 With the Gemini fallback and its matching calibration labels on 300 certification examples (`runs/phase2-gemini/cascade_results.jsonl`): `static_embed` measured 0.837 accuracy with 11 fallback calls and 1.5 ms p95; `minilm_onnx_int8` measured 0.920 accuracy with 1 fallback call and 7.3 ms p95. Both are measurements, not certificates.
 
+## Certification (Phase 3)
+
+```text
+bantam-cascade certify --config configs/banking77-gemini.yaml \
+  --run-dir runs/phase2-gemini \
+  --calibration-labels runs/phase1-gemini/teacher_labels.jsonl
+```
+
+`certify` verifies that saved teacher rows carry the dataset's gold labels, recomputes calibration statistics using only the thresholds already learned from the 200-example calibration split, then runs Learn-then-Test fixed-sequence testing on the 300-example certification split. The candidate order comes from calibration data only; no certification data is used to change it. Results are written to `<run-dir>/certification_result.json`, and looks at the split are tracked in `<run-dir>/certification_ledger.sqlite3` (reuse requires `--allow-reuse` and divides δ by the total number of looks).
+
+Real run against the configured 95% accuracy target (`runs/phase2-gemini/certification_result.json`):
+
+| Student | Errors / 300 | Measured accuracy | HB p-value | Status |
+|---|---:|---:|---:|---|
+| `minilm_onnx_int8` | 24 | 0.920 | 1.000 | not rejected |
+| `static_embed` | 49 | 0.837 | 1.000 | not rejected |
+
+Outcome: `INSUFFICIENT_EVIDENCE`. At δ = 0.05, neither cascade can reject the hypothesis that its true error rate exceeds 5%. The tool does **not** claim a certificate here.
+
 ## How certification works
 
-See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the plain-English explanation and the exact statistical assumptions.
+Learn-then-Test turns risk control into hypothesis testing. With `α = 1 - minimum_accuracy`, each candidate tests `H: risk > α`. Its p-value uses the Hoeffding-Bentkus bound, and a single-start fixed-sequence procedure controls family-wise error at `δ = 1 - confidence_level` (with a further multiple-looks correction on reuse). See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the exact formula and assumptions.
 
 ## Limitations
 
