@@ -113,6 +113,10 @@ Learn-then-Test turns risk control into hypothesis testing. With `α = 1 - minim
 
 See [docs/LIMITATIONS.md](docs/LIMITATIONS.md). Nothing here is a guarantee about deployment data that differs from the certified data.
 
+## Releasing
+
+Releases use PyPI Trusted Publishing, so no long-lived PyPI token is stored. See [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Prior work and credits
 
 Bantam Cascade does **not** claim novelty for distillation, cascades, or threshold selection with guarantees. It builds on TinyDistill, bounded-distill, FrugalGPT, and Learn-then-Test (Angelopoulos, Bates, Candès, Jordan, Lei). Full citations are in [CITATION.cff](CITATION.cff) and [docs/METHODOLOGY.md](docs/METHODOLOGY.md).

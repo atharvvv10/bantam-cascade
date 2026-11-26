@@ -32,3 +32,7 @@ All notable changes to Bantam Cascade are documented here.
 - Added a regression test proving Gemini HTTP errors include a truncated response body but never the key.
 - Bumped the package, citation, and runtime version to 0.1.0; included the shipped configs and docs in the sdist; built the sdist and wheel; passed `twine check`; and verified no `.env` or run artifacts are packaged.
 - Final gates: `ruff check .`, `ruff format --check .`, `mypy`, and 96 passing `pytest` tests.
+
+### Release automation
+- Added a pinned, OIDC-based PyPI publishing workflow that builds, checks, and uploads distributions without a long-lived API token.
+- Added `docs/RELEASING.md` with the one-time PyPI Trusted Publisher setup and publish instructions.
