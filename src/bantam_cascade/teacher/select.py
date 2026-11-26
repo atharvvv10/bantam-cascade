@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from bantam_cascade.teacher.cache import LabelCache
-from bantam_cascade.teacher.client import GroqTeacherClient
+from bantam_cascade.teacher.client import TeacherClient
 from bantam_cascade.teacher.parse import INVALID_LABEL
 
 
@@ -54,7 +54,7 @@ class CandidateMetrics:
 
 def evaluate_candidate(
     *,
-    client: GroqTeacherClient,
+    client: TeacherClient,
     cache: LabelCache,
     texts: Sequence[str],
     gold_labels: Sequence[str],

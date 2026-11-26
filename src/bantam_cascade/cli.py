@@ -28,7 +28,7 @@ from bantam_cascade.students import (
 )
 from bantam_cascade.students.base import confidence_scores
 from bantam_cascade.teacher.cache import LabelCache
-from bantam_cascade.teacher.client import GroqTeacherClient
+from bantam_cascade.teacher.factory import build_teacher_client
 from bantam_cascade.teacher.select import (
     evaluate_candidate,
     recommend,
@@ -126,7 +126,7 @@ def label(
     sample_size = parsed.splits.calibration if limit is None else limit
     texts, gold_by_text, labels = _calibration_data(parsed, sample_size)
     cache = LabelCache(_cache_path(run_dir))
-    client = GroqTeacherClient(parsed.teacher)
+    client = build_teacher_client(parsed.teacher)
 
     if dry_run:
         estimate = client.dry_run_estimate(
@@ -137,6 +137,7 @@ def label(
             limit=sample_size,
         )
         console.print("[bold]Dry run — no API calls made.[/bold]")
+        console.print(f"Provider: {parsed.teacher.provider}")
         console.print(f"Model: {model or parsed.teacher.model}")
         console.print(
             f"Texts: {estimate.texts} | to call: {estimate.requests} | cached: {estimate.cached}"
@@ -182,6 +183,8 @@ def label(
                         "output_tokens": result.output_tokens,
                         "latency_ms": result.latency_ms,
                         "cached": result.cached,
+                        "confidence": result.confidence,
+                        "probabilities": result.probabilities,
                     },
                     ensure_ascii=False,
                 )
@@ -231,9 +234,10 @@ def select_teacher(
     texts, gold_by_text, labels = _calibration_data(parsed, sample_size)
     gold = [gold_by_text[text] for text in texts]
     cache = LabelCache(_cache_path(run_dir))
-    client = GroqTeacherClient(parsed.teacher)
+    client = build_teacher_client(parsed.teacher)
 
     table = Table(title="Teacher candidates")
+    table.add_column("Provider")
     table.add_column("Model")
     table.add_column("Accuracy")
     table.add_column("Invalid")
@@ -254,6 +258,7 @@ def select_teacher(
             )
             collected.append(metrics)
             table.add_row(
+                client.provider,
                 model,
                 f"{metrics.accuracy:.3f}",
                 f"{metrics.invalid_rate:.3f}",
@@ -404,7 +409,7 @@ def build_cascade(
     cert_texts = split.certification if limit is None else split.certification[:limit]
 
     cache = LabelCache(_cache_path(run_dir))
-    client = GroqTeacherClient(parsed.teacher)
+    client = build_teacher_client(parsed.teacher)
     if dry_run:
         estimate = client.dry_run_estimate(
             cert_texts,
@@ -414,6 +419,7 @@ def build_cascade(
         )
         client.close()
         console.print("[bold]Dry run — no API calls made.[/bold]")
+        console.print(f"Provider: {parsed.teacher.provider} | Model: {parsed.teacher.model}")
         console.print(
             f"Certification texts: {estimate.texts} | to call: {estimate.requests} | "
             f"cached: {estimate.cached}"
@@ -449,6 +455,8 @@ def build_cascade(
                     "output_tokens": result.output_tokens,
                     "latency_ms": result.latency_ms,
                     "cached": result.cached,
+                    "confidence": result.confidence,
+                    "probabilities": result.probabilities,
                 }
                 for result in batch.results
             ]

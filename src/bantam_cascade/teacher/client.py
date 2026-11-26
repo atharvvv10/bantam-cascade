@@ -1,4 +1,4 @@
-"""Groq teacher client with proactive limits, retries, caching, and dry-run estimates."""
+"""Shared teacher types plus the Groq client with limits, retries, and estimates."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import httpx
 
@@ -20,7 +20,7 @@ from bantam_cascade.teacher.parse import INVALID_LABEL, parse_label
 from bantam_cascade.teacher.prompt import build_prompt
 
 GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions"
-_DEFAULT_MAX_ATTEMPTS = 5
+DEFAULT_MAX_ATTEMPTS = 5
 # gpt-oss models emit hidden reasoning tokens before the final label; a small cap
 # truncates the answer entirely. Give the reasoning enough room to finish.
 _MAX_COMPLETION_TOKENS = 512
@@ -32,7 +32,7 @@ class TeacherError(RuntimeError):
 
 
 class MissingAPIKeyError(TeacherError):
-    """Raised when ``GROQ_API_KEY`` is absent from the environment."""
+    """Raised when the provider's API key is absent from the environment."""
 
 
 class TeacherRateLimitError(TeacherError):
@@ -53,6 +53,8 @@ class LabelResult:
     output_tokens: int
     latency_ms: float
     cached: bool
+    confidence: float | None = None
+    probabilities: dict[str, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -77,7 +79,7 @@ class LabelBatch:
 
 @dataclass(frozen=True)
 class DryRunEstimate:
-    """Call and token estimates computed without contacting Groq."""
+    """Call and token estimates computed without contacting a provider."""
 
     texts: int
     requests: int
@@ -86,6 +88,42 @@ class DryRunEstimate:
     output_tokens: int
     estimated_days: int
     estimated_cost: float
+
+
+class TeacherClient(Protocol):
+    """Structural interface shared by all provider clients."""
+
+    provider: str
+
+    def label_many(
+        self,
+        texts: Sequence[str],
+        labels: Sequence[str],
+        *,
+        cache: LabelCache,
+        model: str | None = None,
+        prompt_version: str | None = None,
+        limit: int | None = None,
+    ) -> LabelBatch:
+        """Label texts, using cached results where available."""
+        ...
+
+    def dry_run_estimate(
+        self,
+        texts: Sequence[str],
+        labels: Sequence[str],
+        *,
+        model: str | None = None,
+        prompt_version: str | None = None,
+        cache: LabelCache | None = None,
+        limit: int = 200,
+    ) -> DryRunEstimate:
+        """Estimate calls and tokens without contacting the provider."""
+        ...
+
+    def close(self) -> None:
+        """Release any owned HTTP resources."""
+        ...
 
 
 def estimate_tokens(text: str) -> int:
@@ -100,8 +138,13 @@ def output_token_estimate(labels: Sequence[str]) -> int:
     return max(estimate_tokens(max(labels, key=len)), _REASONING_TOKEN_HEADROOM)
 
 
+def _backoff(attempt: int) -> float:
+    """Return capped exponential backoff seconds for a retry attempt."""
+    return min(8.0, 0.5 * (2.0**attempt))
+
+
 def _parse_retry_after(value: str | None) -> float | None:
-    """Parse Groq's ``retry-after`` header into seconds."""
+    """Parse a provider's ``retry-after`` header into seconds."""
     if not value:
         return None
     match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(ms|s)?\s*", value, flags=re.IGNORECASE)
@@ -140,6 +183,25 @@ def _read_env_file(path: Path) -> dict[str, str]:
         if name:
             values[name] = value.strip().strip('"').strip("'")
     return values
+
+
+def _api_key(env_var: str) -> str:
+    """Read one provider key from the environment or a project .env file."""
+    key = os.environ.get(env_var)
+    if not key or not key.strip():
+        for env_path in _env_file_paths():
+            key = _read_env_file(env_path).get(env_var)
+            if key and key.strip():
+                break
+    if not key or not key.strip():
+        raise MissingAPIKeyError(
+            f"{env_var} is not set. Put it in a .env file at the project root or set the "
+            "environment variable before a live run; never commit or print it."
+        )
+    cleaned = key.strip()
+    if cleaned.lower() in {"your-key-here", "changeme", "tbd"} or "<" in cleaned:
+        raise MissingAPIKeyError(f"{env_var} is still a placeholder; replace it with your key.")
+    return cleaned
 
 
 class _RateLimiter:
@@ -210,11 +272,12 @@ class GroqTeacherClient:
         http_client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], float] = time.monotonic,
-        max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         """Create a client; the API key is read only when a live call is made."""
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
+        self.provider = "groq"
         self._config = config
         self._owns_client = http_client is None
         self._http = http_client if http_client is not None else httpx.Client(timeout=30.0)
@@ -230,27 +293,11 @@ class GroqTeacherClient:
 
     @staticmethod
     def _api_key() -> str:
-        key = os.environ.get("GROQ_API_KEY")
-        if not key or not key.strip():
-            for env_path in _env_file_paths():
-                key = _read_env_file(env_path).get("GROQ_API_KEY")
-                if key and key.strip():
-                    break
-        if not key or not key.strip():
-            raise MissingAPIKeyError(
-                "GROQ_API_KEY is not set. Put it in a .env file at the project root or set the "
-                "environment variable before a live run; never commit or print it."
-            )
-        cleaned = key.strip()
-        if cleaned.lower() in {"your-key-here", "changeme", "tbd"} or "<" in cleaned:
-            raise MissingAPIKeyError(
-                "GROQ_API_KEY is still a placeholder; replace it with your key."
-            )
-        return cleaned
+        return _api_key("GROQ_API_KEY")
 
     @staticmethod
     def _backoff(attempt: int) -> float:
-        return min(8.0, 0.5 * (2.0**attempt))
+        return _backoff(attempt)
 
     def _post(self, payload: dict[str, object]) -> dict[str, object]:
         headers = {

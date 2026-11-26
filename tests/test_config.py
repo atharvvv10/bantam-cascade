@@ -85,3 +85,25 @@ def test_extra_field_rejected(tmp_path: Path) -> None:
 def test_missing_file_rejected(tmp_path: Path) -> None:
     with pytest.raises(BantamConfigError, match="does not exist"):
         load_config(tmp_path / "missing.yaml")
+
+
+def test_gemini_config_loads() -> None:
+    config = load_config(ROOT / "configs" / "banking77-gemini.yaml")
+    assert config.teacher.provider == "gemini"
+    assert config.teacher.model == "gemini-decision-1"
+    assert config.teacher.rate_limits.requests_per_day == 10000
+
+
+def test_gemini_provider_rejects_chat_model(tmp_path: Path) -> None:
+    raw = _smoke_raw()
+    raw["teacher"]["provider"] = "gemini"
+    raw["teacher"]["model"] = "gemini-3.5-flash-lite"
+    with pytest.raises(BantamConfigError, match="supports only"):
+        load_config(_write(tmp_path, raw))
+
+
+def test_unknown_provider_rejected(tmp_path: Path) -> None:
+    raw = _smoke_raw()
+    raw["teacher"]["provider"] = "openrouter"
+    with pytest.raises(BantamConfigError):
+        load_config(_write(tmp_path, raw))

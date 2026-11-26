@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,6 +18,8 @@ class CachedLabel:
     input_tokens: int
     output_tokens: int
     latency_ms: float
+    confidence: float | None = None
+    probabilities: dict[str, float] | None = None
 
 
 def cache_key(text: str, *, model: str, prompt_version: str) -> str:
@@ -31,7 +35,7 @@ class LabelCache:
     """Store teacher labels so interrupted runs can resume without re-labeled calls."""
 
     def __init__(self, path: str | Path) -> None:
-        """Open or create the SQLite cache at ``path``."""
+        """Open or create the SQLite cache at ``path``, migrating older schemas."""
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
@@ -44,10 +48,17 @@ class LabelCache:
                     label TEXT NOT NULL,
                     input_tokens INTEGER NOT NULL,
                     output_tokens INTEGER NOT NULL,
-                    latency_ms REAL NOT NULL
+                    latency_ms REAL NOT NULL,
+                    confidence REAL,
+                    probabilities TEXT
                 )
                 """
             )
+            columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(labels)")}
+            if "confidence" not in columns:
+                conn.execute("ALTER TABLE labels ADD COLUMN confidence REAL")
+            if "probabilities" not in columns:
+                conn.execute("ALTER TABLE labels ADD COLUMN probabilities TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path)
@@ -58,18 +69,36 @@ class LabelCache:
         with self._connect() as conn:
             row = conn.execute(
                 """
-                SELECT label, input_tokens, output_tokens, latency_ms
+                SELECT label, input_tokens, output_tokens, latency_ms, confidence, probabilities
                 FROM labels WHERE key = ?
                 """,
                 (key,),
             ).fetchone()
         if row is None:
             return None
+
+        confidence = float(row[4]) if row[4] is not None else None
+        probabilities: dict[str, float] | None = None
+        raw_probabilities = row[5]
+        if isinstance(raw_probabilities, str) and raw_probabilities:
+            decoded: Any = None
+            try:
+                decoded = json.loads(raw_probabilities)
+            except json.JSONDecodeError:
+                decoded = None
+            if isinstance(decoded, dict):
+                probabilities = {
+                    str(name): float(value)
+                    for name, value in decoded.items()
+                    if isinstance(value, (int, float)) and not isinstance(value, bool)
+                }
         return CachedLabel(
             label=str(row[0]),
             input_tokens=int(row[1]),
             output_tokens=int(row[2]),
             latency_ms=float(row[3]),
+            confidence=confidence,
+            probabilities=probabilities,
         )
 
     def put(
@@ -82,20 +111,28 @@ class LabelCache:
         input_tokens: int,
         output_tokens: int,
         latency_ms: float,
+        confidence: float | None = None,
+        probabilities: dict[str, float] | None = None,
     ) -> None:
         """Store a teacher label and replace any prior value for the same key."""
         key = cache_key(text, model=model, prompt_version=prompt_version)
+        probability_json = (
+            json.dumps(probabilities, sort_keys=True) if probabilities is not None else None
+        )
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO labels
-                    (key, model, prompt_version, label, input_tokens, output_tokens, latency_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (key, model, prompt_version, label, input_tokens, output_tokens, latency_ms,
+                     confidence, probabilities)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET
                     label = excluded.label,
                     input_tokens = excluded.input_tokens,
                     output_tokens = excluded.output_tokens,
-                    latency_ms = excluded.latency_ms
+                    latency_ms = excluded.latency_ms,
+                    confidence = excluded.confidence,
+                    probabilities = excluded.probabilities
                 """,
                 (
                     key,
@@ -105,6 +142,8 @@ class LabelCache:
                     input_tokens,
                     output_tokens,
                     latency_ms,
+                    confidence,
+                    probability_json,
                 ),
             )
 

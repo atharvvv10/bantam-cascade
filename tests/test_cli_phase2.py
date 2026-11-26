@@ -47,6 +47,8 @@ def _write_teacher_rows(path: Path, texts: tuple[str, ...], gold: dict[str, str]
 class _StubTeacherClient:
     """Teacher client stub that fails if a live call is attempted."""
 
+    provider = "groq"
+
     def __init__(self, config: object) -> None:
         """Accept the teacher config but make no network calls."""
         self.config = config
@@ -83,7 +85,9 @@ def offline_phase2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Pat
     config = load_config(config_path)
     dataset = make_smoke_dataset(n_per_label=3000, seed=config.seed)
     monkeypatch.setattr(cli_module, "load_dataset_for_config", lambda _config: dataset)
-    monkeypatch.setattr(cli_module, "GroqTeacherClient", _StubTeacherClient)
+    monkeypatch.setattr(
+        cli_module, "build_teacher_client", lambda config: _StubTeacherClient(config)
+    )
     gold = {example.text: example.label for example in dataset.train}
     split = split_by_hash(
         list(gold),

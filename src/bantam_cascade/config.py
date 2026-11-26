@@ -9,6 +9,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 _SUPPORTED_STUDENTS = frozenset({"static_embed", "minilm_onnx_int8", "minilm_onnx_fp32"})
+GEMINI_DECISIONS_MODEL = "gemini-decision-1"
 
 
 class BantamConfigError(ValueError):
@@ -40,7 +41,7 @@ class TeacherConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["groq"] = "groq"
+    provider: Literal["groq", "gemini"] = "groq"
     model: str = Field(min_length=1)
     prompt_version: str = Field(min_length=1)
     price_per_million_input_tokens: float = Field(ge=0.0)
@@ -53,6 +54,15 @@ class TeacherConfig(BaseModel):
         if "<" in value or ">" in value or value.strip().upper() == "TBD":
             raise ValueError("must be a concrete pinned value, not a placeholder or TBD")
         return value
+
+    @model_validator(mode="after")
+    def _check_provider_model(self) -> TeacherConfig:
+        if self.provider == "gemini" and self.model != GEMINI_DECISIONS_MODEL:
+            raise ValueError(
+                "provider 'gemini' uses the Decisions API and supports only "
+                f"model '{GEMINI_DECISIONS_MODEL}'"
+            )
+        return self
 
 
 class SplitsConfig(BaseModel):
