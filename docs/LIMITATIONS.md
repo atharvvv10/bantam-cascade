@@ -1,11 +1,12 @@
-# Limitations (draft)
+# Limitations
 
-> Status: Phase 0 scaffold. All measured values are **TBD** until produced by a real run.
+> Status: Phase 3 complete. Measured values are in [RESULTS.md](RESULTS.md) and in the git-ignored run artifacts referenced there.
 
-- The guarantee is finite-sample and conditional on i.i.d. data and no distribution shift. It says nothing about deployment traffic that differs from the certified data.
-- Accuracy is measured only against gold human labels. Teacher agreement is never used as accuracy.
-- The teacher is pinned and cached; if the provider changes behavior, cached labels define the result.
-- API rate limits, prices, and model availability change. Every cost figure is an ESTIMATE derived from user-supplied prices.
-- Students are CPU-only and single-label text classification. Multi-label, generation, and GPU pipelines are out of scope.
-- Repetitions in the validity experiment reuse a shared gold pool and are therefore not independent.
-- Free-tier limits and model availability change; the exact teacher id and date used for any run are recorded in its results file.
+- The Learn-then-Test guarantee is finite-sample and conditional on i.i.d. certification examples from the same distribution as deployment. It says nothing about distribution shift.
+- Accuracy is measured only against gold human labels. Teacher agreement is never used as accuracy; teacher mistakes and invalid teacher outputs count as losses when the fallback is taken.
+- The teacher provider, model id, and prompt version are pinned by config and cached. If the provider changes behavior, the cached labels define the recorded result; API determinism is not guaranteed.
+- Rate limits, prices, and model availability change. Every cost figure is an estimate computed only from token counts and prices supplied by the user.
+- Students are CPU-only, single-label text classifiers. Multi-label classification, generation, and GPU pipelines are out of scope.
+- The certification split is single-use. Repeated looks are blocked unless `--allow-reuse` is passed, in which case the ledger divides delta by the total number of looks.
+- The current 300-example certification split is too small to certify the configured 95% target with the measured lightweight cascades. The result is `INSUFFICIENT_EVIDENCE`, not a certificate.
+- Additional lightweight model probes were evaluated only on calibration data and did not clear the accuracy bar needed to justify another certification look. No certification data was used for that tuning.
