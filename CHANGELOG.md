@@ -7,6 +7,9 @@ All notable changes to Bantam Cascade are documented here.
 ### Changed
 - Pinned `space/requirements.txt` to tag `v0.1.1` and refreshed the README
   status line after publication.
+- Made the Space scaffold self-contained with the frozen `word_tfidf` threshold
+  row and its gold-label-trained student artifact; no teacher labels, caches,
+  keys, or certificates are included.
 
 ## [0.1.1] - 2026-11-27
 

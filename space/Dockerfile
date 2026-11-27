@@ -8,4 +8,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+COPY run /app/run
+ENV BANTAM_DEMO_RUN_DIR=/app/run
 CMD ["python", "app.py"]
