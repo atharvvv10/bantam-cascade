@@ -23,7 +23,8 @@ tooling; no target, threshold, or goalpost is moved.
   position; `scripts/scan_secrets.py` for key-shaped strings in tracked files
   and git history.
 - CI and PyPI badges, a CLI-evidence GIF, an offline Gradio Space scaffold,
-  `docs/BLOG_POST.md`, and a manual TestPyPI publishing workflow.
+  `docs/BLOG_POST.md`, repository description/topics, and a manual TestPyPI
+  publishing workflow.
 
 ### Changed
 - Renamed `static_embed` to `tfidf_baseline`; old configs and artifacts remain

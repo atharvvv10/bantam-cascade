@@ -25,7 +25,15 @@ The pending publisher creates the PyPI project the first time the workflow publi
 3. Install from TestPyPI in a clean venv and run `bantam-cascade --version` plus
    `bantam-cascade reproduce --trials 2 --examples 40`.
 
-No token is needed; both workflows use short-lived OIDC credentials.
+No token is needed; both workflows use short-lived OIDC credentials. On
+2026-11-27 the first TestPyPI dispatch (run `45947996121`) built successfully but
+failed with `invalid-publisher`: TestPyPI has no matching pending publisher yet.
+Configure it with owner `atharvvv10`, repository `bantam-cascade`, workflow
+`publish-testpypi.yml`, environment `testpypi`, then re-run the manual workflow.
+The OIDC subject shown by GitHub was
+`repo:atharvvv10@160210787/bantam-cascade@1469926336:environment:testpypi`; the
+exact claim values are rendered by the workflow for debugging and must match the
+TestPyPI publisher entry.
 
 ## Publishing
 
@@ -35,9 +43,10 @@ Do not create or commit a long-lived PyPI API token unless Trusted Publishing ca
 
 ## Repository metadata
 
-The README now carries the CI and PyPI badges and a real results table. GitHub
-repository metadata must be set by an authenticated maintainer (the local build
-environment has no GitHub CLI credentials):
+The README now carries the CI and PyPI badges and a real results table. On
+2026-11-27 the repository description and topics were set through the GitHub REST
+API using the existing Git credential; no token was printed or stored. The
+equivalent maintainer command is kept here for reference:
 
 ```bash
 gh repo edit atharvvv10/bantam-cascade \
