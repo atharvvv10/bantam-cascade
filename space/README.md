@@ -1,10 +1,12 @@
 # Bantam Cascade demo Space
 
-This directory is a self-contained Gradio Space using the Docker SDK.
+This directory is a self-contained Gradio Space.
 
-- `Dockerfile` uses Python 3.11, installs `git`, installs
-  `bantam-cascade[students]` from tag `v0.1.1`, and sets
-  `BANTAM_DEMO_RUN_DIR=/app/run`.
+- `app.py` starts the demo.
+- `requirements.txt` installs `bantam-cascade` from tag `v0.1.1` with
+  `--no-deps` and lists only the NumPy/SciPy/scikit-learn/joblib packages the
+  saved `word_tfidf` student needs. This avoids the HF Gradio SDK's
+  `pydantic<=2.12.5` constraint without changing the released package.
 - `run/` contains only the frozen `word_tfidf` threshold row and the
   gold-label-trained student artifact. No teacher labels, teacher caches,
   provider keys, or certificates are included.

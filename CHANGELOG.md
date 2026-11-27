@@ -10,8 +10,9 @@ All notable changes to Bantam Cascade are documented here.
 - Made the Space scaffold self-contained with the frozen `word_tfidf` threshold
   row and its gold-label-trained student artifact; no teacher labels, caches,
   keys, or certificates are included.
-- Switched the Space scaffold to the Docker SDK so the released package's
-  pinned dependencies do not conflict with the HF Gradio SDK extras.
+- Kept the Space on the Gradio SDK and changed its requirements to install the
+  released package with `--no-deps` plus only the student inference packages,
+  avoiding the HF Gradio SDK's `pydantic<=2.12.5` constraint.
 
 ## [0.1.1] - 2026-11-27
 

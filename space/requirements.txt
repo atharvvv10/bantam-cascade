@@ -1,2 +1,7 @@
-bantam-cascade[students] @ git+https://github.com/atharvvv10/bantam-cascade.git@v0.1.1
-gradio==6.32.0
+--no-deps
+bantam-cascade @ git+https://github.com/atharvvv10/bantam-cascade.git@v0.1.1
+numpy==2.3.5
+scipy==1.16.3
+scikit-learn==1.9.1
+joblib==1.6.0
+threadpoolctl==3.8.0
