@@ -2,6 +2,12 @@
 
 All notable changes to Bantam Cascade are documented here.
 
+## [Unreleased]
+
+### Changed
+- Pinned `space/requirements.txt` to tag `v0.1.1` and refreshed the README
+  status line after publication.
+
 ## [0.1.1] - 2026-11-27
 
 The published `v0.1.0` artifacts are unchanged. This revision adds evidence and
@@ -33,6 +39,13 @@ tooling; no target, threshold, or goalpost is moved.
   finite-sample statistical test and its assumptions.
 - Results, methodology, and limitations docs now report where the cascade does
   and does not help, including cached-latency and unpaid-quota caveats.
+
+### Published
+- TestPyPI run `45950924942` and PyPI run `45951719762` published `0.1.1` with
+  Trusted Publishing; no long-lived token was created or stored.
+- The `v0.1.1` GitHub Release contains the exact PyPI artifacts, byte for byte.
+- Clean-venv installs from both indexes passed `--version`, `plan`, `validity`,
+  and `status-demo`.
 
 ## [0.1.0] - 2026-11-26
 

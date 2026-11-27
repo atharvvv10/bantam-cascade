@@ -7,7 +7,7 @@
 
 ## Status
 
-`v0.1.0` is published on [GitHub](https://github.com/atharvvv10/bantam-cascade/releases/tag/v0.1.0) and [PyPI](https://pypi.org/project/bantam-cascade/0.1.0/) with that release's artifacts unchanged. This repository now contains an in-progress `0.1.1` revision that adds cascade-benefit, statistical-validity, baseline, status, sizing, recall, and licensing evidence. The original SMS certificate has **not** been re-tested or regenerated.
+`v0.1.1` is published on [PyPI](https://pypi.org/project/bantam-cascade/0.1.1/) and [GitHub](https://github.com/atharvvv10/bantam-cascade/releases/tag/v0.1.1). `v0.1.0` remains published with its artifacts unchanged. This revision adds cascade-benefit, statistical-validity, baseline, status, sizing, recall, and licensing evidence. The original SMS certificate has **not** been re-tested or regenerated.
 
 Every number below traces to a run artifact or an offline CLI command. The tool has **one genuine 95% certificate** (SMS Spam, conditional on its documented assumptions) and honest non-certificates elsewhere.
 
