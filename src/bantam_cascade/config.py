@@ -9,7 +9,13 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 _SUPPORTED_STUDENTS = frozenset(
-    {"static_embed", "word_tfidf", "minilm_onnx_int8", "minilm_onnx_fp32"}
+    {
+        "tfidf_baseline",
+        "static_embed",  # legacy alias for old configs
+        "word_tfidf",
+        "minilm_onnx_int8",
+        "minilm_onnx_fp32",
+    }
 )
 GEMINI_DECISIONS_MODEL = "gemini-decision-1"
 

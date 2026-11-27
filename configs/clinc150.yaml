@@ -21,7 +21,7 @@ teacher:
     requests_per_minute: 30
     requests_per_day: 1000
     tokens_per_minute: 8000
-students: [static_embed, minilm_onnx_int8]
+students: [tfidf_baseline, minilm_onnx_int8]
 # Split sizes are sized for the free-tier Groq limits: calibration needs 200
 # teacher calls; certification needs 300.
 splits:

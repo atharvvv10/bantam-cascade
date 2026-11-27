@@ -1,0 +1,2 @@
+bantam-cascade[students] @ git+https://github.com/atharvvv10/bantam-cascade.git@main
+gradio==6.32.0

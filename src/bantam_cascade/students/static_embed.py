@@ -1,4 +1,4 @@
-"""TF-IDF plus logistic-regression student using only base dependencies."""
+"""TF-IDF plus logistic-regression baseline using only base dependencies."""
 
 from __future__ import annotations
 
@@ -15,10 +15,12 @@ from bantam_cascade.students.base import (
 )
 
 
-class StaticEmbedStudent:
-    """A fast, CPU-only bag-of-ngrams student with no model downloads."""
+class TfidfBaselineStudent:
+    """A fast, CPU-only bag-of-ngrams baseline student with no model downloads."""
 
-    name = "static_embed"
+    canonical_name = "tfidf_baseline"
+    legacy_names = frozenset({"static_embed"})
+    name = canonical_name
 
     def __init__(self) -> None:
         """Create an untrained student."""
@@ -47,7 +49,7 @@ class StaticEmbedStudent:
     def predict_proba(self, texts: Sequence[str]) -> np.ndarray:
         """Return class probabilities for each text."""
         if self._vectorizer is None or self._classifier is None:
-            raise RuntimeError("StaticEmbedStudent.fit() must be called first")
+            raise RuntimeError("TfidfBaselineStudent.fit() must be called first")
         if not texts:
             raise ValueError("at least one text is required")
         features = self._vectorizer.transform(list(texts))
@@ -58,18 +60,18 @@ class StaticEmbedStudent:
     def artifact(self) -> StudentArtifact:
         """Return a picklable artifact containing the fitted sklearn objects."""
         if self._vectorizer is None or self._classifier is None:
-            raise RuntimeError("StaticEmbedStudent.fit() must be called first")
+            raise RuntimeError("TfidfBaselineStudent.fit() must be called first")
         return StudentArtifact(
-            name=self.name,
+            name=self.canonical_name,
             classes=self.classes,
             payload={"vectorizer": self._vectorizer, "classifier": self._classifier},
         )
 
     @classmethod
-    def from_artifact(cls, artifact: StudentArtifact) -> StaticEmbedStudent:
-        """Rebuild a trained student from a saved artifact."""
-        if artifact.name != cls.name:
-            raise ValueError(f"Artifact {artifact.name!r} is not a {cls.name} artifact")
+    def from_artifact(cls, artifact: StudentArtifact) -> TfidfBaselineStudent:
+        """Rebuild a trained student from a saved artifact, including legacy names."""
+        if artifact.name != cls.canonical_name and artifact.name not in cls.legacy_names:
+            raise ValueError(f"Artifact {artifact.name!r} is not a {cls.canonical_name} artifact")
         student = cls()
         student.classes = artifact.classes
         vectorizer = artifact.payload.get("vectorizer")
@@ -79,3 +81,7 @@ class StaticEmbedStudent:
         student._vectorizer = vectorizer
         student._classifier = classifier
         return student
+
+
+# Backwards-compatible symbol for callers importing the old class name.
+StaticEmbedStudent = TfidfBaselineStudent

@@ -1,38 +1,51 @@
 # Bantam Cascade
 
-*Bantam Cascade finds the cheapest small-CPU-model + big-LLM fallback cascade that provably meets a user's accuracy requirement, or says honestly that it cannot certify one.*
+[![CI](https://github.com/atharvvv10/bantam-cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/atharvvv10/bantam-cascade/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/bantam-cascade.svg)](https://pypi.org/project/bantam-cascade/)
 
-## Status: Phases 0–11 — complete
+*Bantam Cascade finds a cheap small-CPU-model + big-LLM fallback cascade that meets a user's accuracy requirement under a finite-sample statistical test, or says honestly that it cannot certify one.*
 
-The original plan (Phases 0–3) is complete, and the extended best-version roadmap (Phases 4–11) is complete too. Every number below comes from a real run artifact. The tool now has **one genuine 95% certificate** (SMS Spam) and one honest non-certificate (Banking77). Nothing is claimed that the statistics do not support.
+## Status
 
-## What the finished tool does
+`v0.1.0` is published on [GitHub](https://github.com/atharvvv10/bantam-cascade/releases/tag/v0.1.0) and [PyPI](https://pypi.org/project/bantam-cascade/0.1.0/) with that release's artifacts unchanged. This repository now contains an in-progress `0.1.1` revision that adds cascade-benefit, statistical-validity, baseline, status, sizing, recall, and licensing evidence. The original SMS certificate has **not** been re-tested or regenerated.
+
+Every number below traces to a run artifact or an offline CLI command. The tool has **one genuine 95% certificate** (SMS Spam, conditional on its documented assumptions) and honest non-certificates elsewhere.
+
+## What the tool does
 
 1. Takes a labeled text-classification dataset plus a target accuracy, confidence level, and p95 latency budget.
-2. Trains small CPU-only students, calibrates them, and builds a cascade (student answers when confident, teacher otherwise).
-3. Uses finite-sample statistics against **gold human labels** to certify which configurations meet the target.
-4. Returns the cheapest certified configuration, a Pareto frontier, or an honest `INSUFFICIENT_EVIDENCE` / `NO_FEASIBLE_CONFIG` status.
+2. Trains small CPU-only students on **gold human labels**, calibrates them, and builds a cascade (student answers when confident, teacher otherwise).
+3. Uses finite-sample statistics against **gold human labels** to test which configurations meet the target.
+4. Returns the cheapest certified configuration or an honest `INSUFFICIENT_EVIDENCE` / `NO_FEASIBLE_CONFIG` status.
 
 All cost figures are **ESTIMATES** derived only from prices in the user's config. The word "certified" always appears with its assumptions attached.
 
 ## Quickstart
 
+From a source checkout with the git-ignored frozen run artifacts available:
+
 ```text
 pip install -e ".[dev]"
 bantam-cascade --help
 
-# Certified path (SMS Spam, pinned Groq teacher, word_tfidf student)
-bantam-cascade init --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
-bantam-cascade label --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
-bantam-cascade train-students --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
-bantam-cascade build-cascade --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
-bantam-cascade certify --config configs/sms-spam-groq.yaml --run-dir runs/sms-groq
-
-# Offline demo of a completed run
+# Inspect the frozen certificate; do not re-run certify on this run-dir
+bantam-cascade verify-certificate
 bantam-cascade demo "claim your free prize now" --run-dir runs/sms-groq
+
+# Regenerate offline evidence (no keys or API calls needed)
+bantam-cascade plan --target-accuracy 0.95 --confidence-level 0.95 --assumed-accuracy 0.98
+bantam-cascade validity --trials 200 --examples 600
+bantam-cascade status-demo
+bantam-cascade reproduce --trials 200 --examples 600
 ```
 
-`certify` exits non-zero when it cannot issue a certificate; that is an honest result, not a crash.
+To make a **new** certificate, copy a config and use a fresh `--run-dir`; run `certify` only once after pre-registration. `certify` exits non-zero when it cannot issue a certificate; that is an honest result, not a crash. Do **not** re-run it on `runs/sms-groq`: its single pre-registered look is recorded. Use `verify-certificate` to check the frozen artifact without a new look.
+
+![Bantam Cascade CLI evidence](https://raw.githubusercontent.com/atharvvv10/bantam-cascade/main/docs/assets/bantam-cascade.gif)
+
+A Gradio Space scaffold is in [`space/`](space/). It shows student-only
+decisions at frozen thresholds; no teacher key, fallback call, or certificate is
+produced in the Space.
 
 ## Headline result: certified SMS Spam
 
@@ -49,6 +62,18 @@ A single pre-registered `word_tfidf` cascade was tested once on 300 untouched ex
 | Status | **`CERTIFIED`** |
 
 The threshold was frozen in `runs/sms-groq/preregistration.json` before the certification split was read. The result is conditional on the assumptions in [docs/METHODOLOGY.md](docs/METHODOLOGY.md); see [docs/RESULTS.md](docs/RESULTS.md) for the full record and the separate Banking77 non-certificate.
+
+## Does the cascade actually help?
+
+All rows use the same 300-example certification split and accuracy against **gold human labels**. The student trains on the shown number of gold labels; the teacher is cached and pinned by config.
+
+| Dataset / teacher | Gold labels | Student alone | Teacher alone | Cascade | Fallback rate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| SMS Spam / Groq `openai/gpt-oss-20b` | 100 | 0.947 | 0.890 | **0.970** | 0.117 |
+| SMS Spam / Groq `openai/gpt-oss-20b` | 300 | 0.947 | 0.890 | 0.967 | 0.193 |
+| Banking77 / Gemini `gemini-decision-1` | 2,000 (`minilm_onnx_int8`) | **0.897** | 0.803 | **0.897** | 0.000 |
+
+So yes, on SMS: the small model learns from human labels, and the weaker big model's errors are complementary enough to lift accuracy by 2.3 points at a 100-label budget. On Banking77 the cascade does **not** help with a stronger student; we report that too. Full tables, including `tfidf_baseline` ablations and baselines, are in [docs/RESULTS.md](docs/RESULTS.md).
 
 ## Teacher labeling (Phase 1)
 
@@ -82,9 +107,9 @@ bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phas
 bantam-cascade build-cascade --config configs/banking77.yaml --run-dir runs/phase2 --calibration-labels runs/phase1/teacher_labels.jsonl
 ```
 
-Students are `static_embed` (word TF-IDF + logistic regression, no downloads), `word_tfidf` (word 1–2 gram TF-IDF + logistic regression, the certified student), and `minilm_onnx_int8`/`fp32` (MiniLM ONNX for CPU). MiniLM needs the optional ONNX dependencies: `pip install -e ".[students]"`. Students train on **gold human labels**; the teacher is used only as the cascade fallback and is also scored against gold. `build-cascade` reads the 200 calibration labels and labels the certification split with the teacher (resumable via the cache). All outputs go to the selected `--run-dir`. Measurements are not certificates unless the pre-registered Learn-then-Test procedure accepts them.
+Students are `tfidf_baseline` (word TF-IDF + logistic regression, no downloads; formerly `static_embed`, still accepted as a legacy config alias), `word_tfidf` (word 1–2 gram TF-IDF + logistic regression, the certified student), and `minilm_onnx_int8`/`fp32` (MiniLM ONNX for CPU). MiniLM needs the optional ONNX dependencies: `pip install -e ".[students]"`. Students train on **gold human labels**; the teacher is used only as the cascade fallback and is also scored against gold. `build-cascade` reads the 200 calibration labels and labels the certification split with the teacher (resumable via the cache). All outputs go to the selected `--run-dir`. Measurements are not certificates unless the pre-registered Learn-then-Test procedure accepts them.
 
-With the Gemini fallback and its matching calibration labels on 300 certification examples (`runs/phase2-gemini/cascade_results.jsonl`): `static_embed` measured 0.837 accuracy with 11 fallback calls and 1.5 ms p95; `minilm_onnx_int8` measured 0.920 accuracy with 1 fallback call and 7.3 ms p95. Both are measurements, not certificates.
+With the Gemini fallback and its matching calibration labels on 300 certification examples (`runs/phase2-gemini/cascade_results.jsonl`): `tfidf_baseline` measured 0.837 accuracy with 11 fallback calls and 1.5 ms p95; `minilm_onnx_int8` measured 0.920 accuracy with 1 fallback call and 7.3 ms p95. Both are measurements, not certificates.
 
 ## Certification (Phase 3)
 
@@ -101,9 +126,23 @@ Real run against the configured 95% accuracy target (`runs/phase2-gemini/certifi
 | Student | Errors / 300 | Measured accuracy | HB p-value | Status |
 |---|---:|---:|---:|---|
 | `minilm_onnx_int8` | 24 | 0.920 | 1.000 | not rejected |
-| `static_embed` | 49 | 0.837 | 1.000 | not rejected |
+| `tfidf_baseline` (formerly `static_embed`) | 49 | 0.837 | 1.000 | not rejected |
 
 Outcome: `INSUFFICIENT_EVIDENCE`. At δ = 0.05, neither cascade can reject the hypothesis that its true error rate exceeds 5%. The tool does **not** claim a certificate here.
+
+## Validity, sizing, statuses, and recall
+
+The revision adds evidence for the statistical and operational claims:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Procedure validity, 200 resamples | `bantam-cascade validity` | Boundary false-cert rate 0.000 vs naive 0.040 (allowed 0.050). |
+| Test-size planning | `bantam-cascade plan --assumed-accuracy 0.98` | 240 certification examples at 95% target/confidence. The original run used 300. |
+| All three statuses | `bantam-cascade status-demo` | `CERTIFIED`, `INSUFFICIENT_EVIDENCE`, `NO_FEASIBLE_CONFIG` (synthetic logic demo, not a certificate). |
+| Co-primary accuracy + spam recall | `bantam-cascade certify-recall` | Fresh seed-43 split: accuracy 596/600 passes, spam recall 72/74 fails at `delta/2 = 0.025`; status `INSUFFICIENT_EVIDENCE`. |
+| Exact binomial cross-check | `verify-certificate` / artifact | SMS p = 0.000691 vs Hoeffding-Bentkus p = 0.001878; both reject at 0.05. |
+
+`bantam-cascade reproduce` regenerates all offline evidence and re-verifies the frozen certificate in one command. It never re-labels the original split.
 
 ## How certification works
 
@@ -111,7 +150,7 @@ Learn-then-Test turns risk control into hypothesis testing. With `α = 1 - minim
 
 ## Limitations
 
-See [docs/LIMITATIONS.md](docs/LIMITATIONS.md). Nothing here is a guarantee about deployment data that differs from the certified data.
+See [docs/LIMITATIONS.md](docs/LIMITATIONS.md). Nothing here is a guarantee about deployment data that differs from the certified data. See [docs/COMPLIANCE.md](docs/COMPLIANCE.md) for third-party inference provenance: no teacher labels, caches, or derived models are published, and Gemini-derived exploratory data is not cleared for release. The one-page [blog post](docs/BLOG_POST.md) explains where the approach works and where it does not.
 
 ## Releasing
 

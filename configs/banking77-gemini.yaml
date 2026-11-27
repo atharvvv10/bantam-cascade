@@ -18,7 +18,7 @@ teacher:
     requests_per_minute: 200
     requests_per_day: 10000
     tokens_per_minute: 50000
-students: [static_embed, minilm_onnx_int8]
+students: [tfidf_baseline, minilm_onnx_int8]
 splits:
   student_train: 4000
   calibration: 200

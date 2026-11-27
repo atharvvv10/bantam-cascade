@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from bantam_cascade.config import SplitsConfig
@@ -100,6 +101,16 @@ def split_by_hash(
         result.official_test,
     )
     return result
+
+
+def certification_split_hash(texts: Sequence[str]) -> str:
+    """Hash the certification texts so a ledger can detect repeated looks."""
+    digest = hashlib.sha256()
+    for text in texts:
+        encoded = text.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, byteorder="big"))
+        digest.update(encoded)
+    return digest.hexdigest()
 
 
 def splits_fingerprint(result: SplitResult, *, seed: int) -> str:

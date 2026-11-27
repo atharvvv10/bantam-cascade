@@ -6,7 +6,7 @@ import pytest
 
 from bantam_cascade.students import (
     MiniLMOnnxStudent,
-    StaticEmbedStudent,
+    TfidfBaselineStudent,
     WordTfidfStudent,
     build_student,
     restore_student,
@@ -23,8 +23,8 @@ from bantam_cascade.students.base import (
 )
 
 
-def test_static_embed_trains_and_predicts(tmp_path: Path) -> None:
-    student = StaticEmbedStudent()
+def test_tfidf_baseline_trains_and_predicts(tmp_path: Path) -> None:
+    student = TfidfBaselineStudent()
     texts = [
         "billing invoice issue",
         "billing charge dispute",
@@ -44,7 +44,7 @@ def test_static_embed_trains_and_predicts(tmp_path: Path) -> None:
     path = tmp_path / "student.joblib"
     save_student(student, path)
     restored = restore_student(path)
-    assert isinstance(restored, StaticEmbedStudent)
+    assert isinstance(restored, TfidfBaselineStudent)
     assert np.allclose(restored.predict_proba(["billing charge"]), proba[:1])
 
 
@@ -80,8 +80,8 @@ def test_word_tfidf_trains_and_restores(tmp_path: Path) -> None:
         WordTfidfStudent.from_artifact(StudentArtifact("static_embed", ("ham", "spam"), {}))
 
 
-def test_static_embed_rejects_bad_inputs() -> None:
-    student = StaticEmbedStudent()
+def test_tfidf_baseline_rejects_bad_inputs() -> None:
+    student = TfidfBaselineStudent()
     with pytest.raises(RuntimeError, match="fit"):
         student.predict_proba(["x"])
     with pytest.raises(ValueError, match="same length"):
@@ -89,7 +89,21 @@ def test_static_embed_rejects_bad_inputs() -> None:
     with pytest.raises(ValueError, match="two distinct"):
         student.fit(["a", "b"], ["billing", "billing"])
     with pytest.raises(ValueError, match="missing vectorizer"):
-        StaticEmbedStudent.from_artifact(StudentArtifact("static_embed", ("a", "b"), {}))
+        TfidfBaselineStudent.from_artifact(StudentArtifact("tfidf_baseline", ("a", "b"), {}))
+
+
+def test_tfidf_baseline_accepts_legacy_artifact_name() -> None:
+    student = TfidfBaselineStudent()
+    student.fit(
+        ["billing invoice", "shipping parcel", "billing charge", "shipping delay"],
+        ["billing", "shipping", "billing", "shipping"],
+    )
+    artifact = student.artifact()
+    legacy = StudentArtifact("static_embed", artifact.classes, artifact.payload)
+    restored = TfidfBaselineStudent.from_artifact(legacy)
+    assert np.allclose(
+        restored.predict_proba(["billing charge"]), student.predict_proba(["billing charge"])
+    )
 
 
 def test_helper_validation_and_alignment() -> None:
@@ -110,7 +124,8 @@ def test_student_report_validates() -> None:
 
 
 def test_build_student_names() -> None:
-    assert isinstance(build_student("static_embed"), StaticEmbedStudent)
+    assert isinstance(build_student("tfidf_baseline"), TfidfBaselineStudent)
+    assert isinstance(build_student("static_embed"), TfidfBaselineStudent)
     assert isinstance(build_student("word_tfidf"), WordTfidfStudent)
     int8 = build_student("minilm_onnx_int8")
     fp32 = build_student("minilm_onnx_fp32")

@@ -8,11 +8,14 @@ from bantam_cascade.certification import (
     alpha_from_minimum_accuracy,
     binomial_cdf,
     certify_candidates,
+    certify_candidates_with_recall,
     delta_from_confidence_level,
     errors_from_accuracy,
+    exact_binomial_p_value,
     fixed_sequence_rejections,
     hb_p_value,
     kl_divergence,
+    required_examples_for_accuracy,
 )
 
 
@@ -97,10 +100,37 @@ def test_kl_and_binomial_helpers() -> None:
     assert binomial_cdf(10, 10, 0.5) == pytest.approx(1.0)
 
 
+def test_exact_binomial_and_hb_p_values() -> None:
+    exact = exact_binomial_p_value(errors=0, examples=100, alpha=0.1)
+    assert exact == pytest.approx(0.9**100)
+    hb = hb_p_value(errors=0, examples=100, alpha=0.1)
+    assert hb == pytest.approx(exact)
+    assert exact_binomial_p_value(errors=10, examples=100, alpha=0.1) > exact
+    with pytest.raises(ValueError, match="between 0 and examples"):
+        exact_binomial_p_value(errors=-1, examples=100, alpha=0.1)
+
+
 def test_hb_p_value_is_small_only_when_risk_is_below_alpha() -> None:
     assert hb_p_value(errors=0, examples=100, alpha=0.1) == pytest.approx(0.9**100)
     assert hb_p_value(errors=10, examples=100, alpha=0.1) == pytest.approx(1.0)
     assert hb_p_value(errors=20, examples=100, alpha=0.1) == pytest.approx(1.0)
+
+
+def test_required_examples_uses_conservative_error_count() -> None:
+    assert (
+        required_examples_for_accuracy(
+            target_accuracy=0.95,
+            confidence_level=0.95,
+            assumed_accuracy=0.98,
+        )
+        == 240
+    )
+    with pytest.raises(ValueError, match="target_accuracy"):
+        required_examples_for_accuracy(
+            target_accuracy=0.98,
+            confidence_level=0.95,
+            assumed_accuracy=0.95,
+        )
 
 
 def test_fixed_sequence_stops_at_first_failure() -> None:
@@ -168,4 +198,49 @@ def test_candidate_rejects_mismatched_identity() -> None:
             threshold=0.5,
             calibration=calibration,
             certification=certification,
+        )
+
+
+def test_recall_certification_requires_both_endpoints() -> None:
+    strong = _candidate("strong", accuracy=0.987)
+    weak_recall = _candidate("weak-recall", accuracy=0.987)
+    outcome = certify_candidates_with_recall(
+        [strong, weak_recall],
+        minimum_accuracy=0.95,
+        minimum_recall=0.95,
+        delta=0.05,
+        max_p95_latency_ms=10.0,
+        recall_counts=[(0, 100), (10, 100)],
+    )
+    assert outcome["status"] == "CERTIFIED"
+    candidates = outcome["candidates"]
+    assert isinstance(candidates, list)
+    assert [row["certified"] for row in candidates] == [True, False]
+    assert outcome["per_endpoint_delta"] == pytest.approx(0.025)
+
+
+def test_recall_certification_reports_no_feasible_config() -> None:
+    slow = _candidate("slow", accuracy=0.987, p95=500.0)
+    outcome = certify_candidates_with_recall(
+        [slow],
+        minimum_accuracy=0.95,
+        minimum_recall=0.95,
+        delta=0.05,
+        max_p95_latency_ms=10.0,
+        recall_counts=[(0, 100)],
+    )
+    assert outcome["status"] == "NO_FEASIBLE_CONFIG"
+    assert outcome["chosen"] is None
+
+
+def test_recall_certification_rejects_mismatched_counts() -> None:
+    candidate = _candidate("one", accuracy=0.987)
+    with pytest.raises(ValueError, match="one entry per candidate"):
+        certify_candidates_with_recall(
+            [candidate],
+            minimum_accuracy=0.95,
+            minimum_recall=0.95,
+            delta=0.05,
+            max_p95_latency_ms=10.0,
+            recall_counts=[],
         )

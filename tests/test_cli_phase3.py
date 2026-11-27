@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from typer.testing import CliRunner
 
 from bantam_cascade.calibration import select_threshold
 from bantam_cascade.cascade import TeacherPrediction, evaluate_cascade
-from bantam_cascade.cli import app
+from bantam_cascade.cli import _split_data, _split_hash, app
 from bantam_cascade.config import load_config
 from bantam_cascade.data import make_smoke_dataset
 from bantam_cascade.splits import split_by_hash
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _write_config(tmp_path: Path, *, minimum_accuracy: float = 0.8) -> Path:
     raw = yaml.safe_load((ROOT / "configs" / "smoke.yaml").read_text(encoding="utf-8"))
     raw["constraints"]["minimum_accuracy"] = minimum_accuracy
-    raw["students"] = ["static_embed"]
+    raw["students"] = ["tfidf_baseline"]
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     return path
@@ -75,7 +76,7 @@ def offline_phase3(tmp_path: Path) -> tuple[Path, Path]:
     _write_teacher_rows(run_dir / "teacher_labels.jsonl", split.calibration, gold)
     _write_teacher_rows(run_dir / "certification_teacher_labels.jsonl", split.certification, gold)
 
-    student = restore_student(run_dir / "students" / "static_embed.joblib")
+    student = restore_student(run_dir / "students" / "tfidf_baseline.joblib")
     calibration_proba, _ = _predict(student, split.calibration)
     threshold = select_threshold(
         proba=calibration_proba,
@@ -86,7 +87,7 @@ def offline_phase3(tmp_path: Path) -> tuple[Path, Path]:
     ).threshold
     certification_proba, latency = _predict(student, split.certification)
     result = evaluate_cascade(
-        student="static_embed",
+        student="tfidf_baseline",
         threshold=threshold,
         proba=certification_proba,
         classes=student.classes,
@@ -135,7 +136,7 @@ def test_certify_certifies_offline(offline_phase3: tuple[Path, Path]) -> None:
     assert "Assumptions attached" in result.stdout
     payload = json.loads((run_dir / "certification_result.json").read_text(encoding="utf-8"))
     assert payload["status"] == "CERTIFIED"
-    assert payload["chosen"]["student"] == "static_embed"
+    assert payload["chosen"]["student"] == "tfidf_baseline"
     assert payload["prior_looks"] == 0
     assert payload["delta"] == pytest.approx(0.1)
 
@@ -186,3 +187,52 @@ def test_certify_requires_cascade_results(offline_phase3: tuple[Path, Path]) -> 
     )
     assert result.exit_code != 0
     assert "build-cascade" in result.output
+
+
+def _write_recall_prereg(config_path: Path, run_dir: Path) -> str:
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    raw["constraints"]["minimum_accuracy"] = 0.6
+    config_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    config = load_config(config_path)
+    split, _gold, labels = _split_data(config)
+    positive_label = labels[0]
+    payload = {
+        "config_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+        "split_hash": _split_hash(split.certification),
+        "positive_label": positive_label,
+        "per_endpoint_delta": 0.05,
+    }
+    (run_dir / "preregistration.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return positive_label
+
+
+def test_certify_recall_certifies_offline(offline_phase3: tuple[Path, Path]) -> None:
+    config_path, run_dir = offline_phase3
+    positive_label = _write_recall_prereg(config_path, run_dir)
+    result = RUNNER.invoke(
+        app,
+        ["certify-recall", "--config", str(config_path), "--run-dir", str(run_dir)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "CERTIFIED" in result.stdout
+    payload = json.loads((run_dir / "recall_certification_result.json").read_text(encoding="utf-8"))
+    assert payload["status"] == "CERTIFIED"
+    assert payload["positive_label"] == positive_label
+    assert payload["per_endpoint_delta"] == pytest.approx(0.05)
+    assert payload["prior_looks"] == 0
+
+
+def test_certify_recall_requires_matching_config(offline_phase3: tuple[Path, Path]) -> None:
+    config_path, run_dir = offline_phase3
+    _write_recall_prereg(config_path, run_dir)
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    raw["seed"] = 43
+    config_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    result = RUNNER.invoke(
+        app,
+        ["certify-recall", "--config", str(config_path), "--run-dir", str(run_dir)],
+    )
+    assert result.exit_code != 0
+    assert "Config hash" in result.output

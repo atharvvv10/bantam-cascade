@@ -11,7 +11,7 @@ def _teacher(label: str = "yes") -> TeacherPrediction:
 def test_evaluate_cascade_measures_accuracy_cost_and_latency() -> None:
     proba = np.array([[0.9, 0.1], [0.4, 0.6], [0.8, 0.2]])
     result = evaluate_cascade(
-        student="static_embed",
+        student="tfidf_baseline",
         threshold=0.7,
         proba=proba,
         classes=("no", "yes"),

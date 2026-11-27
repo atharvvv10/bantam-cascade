@@ -59,6 +59,32 @@ class CandidateEvaluation:
     fallback_rate: float
     estimated_cost: float
     p95_latency_ms: float
+    exact_binomial_p_value: float = 0.0
+
+
+@dataclass(frozen=True)
+class RecallCandidateEvaluation:
+    """Co-primary accuracy-and-recall test result for one candidate configuration."""
+
+    student: str
+    threshold: float
+    accuracy_errors: int
+    accuracy_examples: int
+    accuracy_p_value: float
+    accuracy_exact_p_value: float
+    recall_errors: int
+    recall_examples: int
+    recall_p_value: float
+    recall_exact_p_value: float
+    per_endpoint_delta: float
+    certified: bool
+    latency_ok: bool
+    measured_accuracy: float
+    measured_recall: float
+    calibration_accuracy: float
+    fallback_rate: float
+    estimated_cost: float
+    p95_latency_ms: float
 
 
 @dataclass(frozen=True)
@@ -142,6 +168,17 @@ def binomial_cdf(k: int, n: int, p: float) -> float:
     return min(1.0, total)
 
 
+def exact_binomial_p_value(*, errors: int, examples: int, alpha: float) -> float:
+    """Return the exact one-sided binomial p-value for ``H: risk > alpha``."""
+    if examples <= 0:
+        raise ValueError("examples must be positive")
+    if not 0 <= errors <= examples:
+        raise ValueError("errors must be between 0 and examples")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
+    return min(1.0, binomial_cdf(errors, examples, alpha))
+
+
 def hb_p_value(*, errors: int, examples: int, alpha: float) -> float:
     """Return the Hoeffding-Bentkus p-value for ``H: risk > alpha``."""
     if examples <= 0:
@@ -154,8 +191,33 @@ def hb_p_value(*, errors: int, examples: int, alpha: float) -> float:
     empirical_risk = errors / examples
     clipped = min(empirical_risk, alpha)
     hoeffding = math.exp(-examples * kl_divergence(clipped, alpha))
-    binomial = min(1.0, math.e * binomial_cdf(errors, examples, alpha))
+    binomial = min(
+        1.0, math.e * exact_binomial_p_value(errors=errors, examples=examples, alpha=alpha)
+    )
     return min(hoeffding, binomial)
+
+
+def required_examples_for_accuracy(
+    *,
+    target_accuracy: float,
+    confidence_level: float,
+    assumed_accuracy: float,
+    max_examples: int = 100_000,
+) -> int:
+    """Find the smallest test size that can reject ``risk > 1 - target``.
+
+    The assumed accuracy must exceed the target; its expected error count is
+    rounded up so the calculation is conservative.
+    """
+    alpha = alpha_from_minimum_accuracy(target_accuracy)
+    delta = delta_from_confidence_level(confidence_level)
+    if not 0.0 < target_accuracy < assumed_accuracy < 1.0:
+        raise ValueError("require 0 < target_accuracy < assumed_accuracy < 1")
+    for examples in range(1, max_examples + 1):
+        errors = math.ceil((1.0 - assumed_accuracy) * examples)
+        if hb_p_value(errors=errors, examples=examples, alpha=alpha) <= delta:
+            return examples
+    raise ValueError(f"no sufficient sample size below {max_examples}")
 
 
 def fixed_sequence_rejections(p_values: Sequence[float], delta: float) -> tuple[int, ...]:
@@ -219,11 +281,13 @@ def certify_candidates(
         if not 0 <= errors <= examples:
             raise ValueError("candidate accuracy implies an impossible error count")
         p_value = hb_p_value(errors=errors, examples=examples, alpha=alpha)
+        exact = exact_binomial_p_value(errors=errors, examples=examples, alpha=alpha)
         evaluations.append(
             CandidateEvaluation(
                 student=candidate.student,
                 threshold=candidate.threshold,
                 p_value=p_value,
+                exact_binomial_p_value=exact,
                 delta=delta,
                 certified=False,
                 latency_ok=candidate.certification.p95_latency_ms <= max_p95_latency_ms,
@@ -269,3 +333,129 @@ def certify_candidates(
         certified=certified,
         chosen=chosen,
     )
+
+
+def certify_candidates_with_recall(
+    candidates: Sequence[Candidate],
+    *,
+    minimum_accuracy: float,
+    minimum_recall: float,
+    delta: float,
+    max_p95_latency_ms: float,
+    recall_counts: Sequence[tuple[int, int]],
+) -> dict[str, object]:
+    """Certify two co-primary endpoints with a Bonferroni-split fixed sequence.
+
+    Each candidate must reject ``risk > 1 - minimum_accuracy`` for overall
+    accuracy and ``risk > 1 - minimum_recall`` for positive-class recall. The
+    family-wise error level ``delta`` is split evenly, so each endpoint is
+    tested at ``delta / 2``. Candidates are walked in their pre-registered
+    order and the sequence stops at the first candidate that fails either
+    endpoint.
+
+    Args:
+        candidates: Configurations in pre-registered order.
+        minimum_accuracy: Required overall accuracy.
+        minimum_recall: Required positive-class recall.
+        delta: Family-wise error level, already corrected for repeated looks.
+        max_p95_latency_ms: Maximum allowed measured p95 latency.
+        recall_counts: ``(errors, positives)`` for each candidate, in the same
+            order as ``candidates``.
+
+    Returns:
+        A JSON-serializable outcome dictionary with an explicit status.
+    """
+    accuracy_alpha = alpha_from_minimum_accuracy(minimum_accuracy)
+    recall_alpha = alpha_from_minimum_accuracy(minimum_recall)
+    if not 0.0 < delta < 1.0:
+        raise ValueError(f"delta must be in (0, 1), got {delta}")
+    if max_p95_latency_ms <= 0.0:
+        raise ValueError("max_p95_latency_ms must be positive")
+    if len(recall_counts) != len(candidates):
+        raise ValueError("recall_counts must have one entry per candidate")
+
+    per_endpoint_delta = delta / 2.0
+    evaluations: list[RecallCandidateEvaluation] = []
+    for candidate, (recall_errors, positives) in zip(candidates, recall_counts, strict=True):
+        examples = candidate.certification.examples
+        accuracy_errors = errors_from_accuracy(
+            accuracy=candidate.certification.accuracy,
+            examples=examples,
+        )
+        if positives <= 0 or not 0 <= recall_errors <= positives:
+            raise ValueError("recall_counts must have positive examples and valid errors")
+        accuracy_p = hb_p_value(errors=accuracy_errors, examples=examples, alpha=accuracy_alpha)
+        recall_p = hb_p_value(errors=recall_errors, examples=positives, alpha=recall_alpha)
+        evaluations.append(
+            RecallCandidateEvaluation(
+                student=candidate.student,
+                threshold=candidate.threshold,
+                accuracy_errors=accuracy_errors,
+                accuracy_examples=examples,
+                accuracy_p_value=accuracy_p,
+                accuracy_exact_p_value=exact_binomial_p_value(
+                    errors=accuracy_errors, examples=examples, alpha=accuracy_alpha
+                ),
+                recall_errors=recall_errors,
+                recall_examples=positives,
+                recall_p_value=recall_p,
+                recall_exact_p_value=exact_binomial_p_value(
+                    errors=recall_errors, examples=positives, alpha=recall_alpha
+                ),
+                per_endpoint_delta=per_endpoint_delta,
+                certified=False,
+                latency_ok=candidate.certification.p95_latency_ms <= max_p95_latency_ms,
+                measured_accuracy=candidate.certification.accuracy,
+                measured_recall=1.0 - recall_errors / positives,
+                calibration_accuracy=candidate.calibration.accuracy,
+                fallback_rate=candidate.certification.fallback_rate,
+                estimated_cost=candidate.certification.estimated_cost,
+                p95_latency_ms=candidate.certification.p95_latency_ms,
+            )
+        )
+
+    certified_list: list[RecallCandidateEvaluation] = []
+    for index, item in enumerate(evaluations):
+        if item.accuracy_p_value > per_endpoint_delta or item.recall_p_value > per_endpoint_delta:
+            break
+        updated = replace(item, certified=True)
+        evaluations[index] = updated
+        certified_list.append(updated)
+    certified = tuple(certified_list)
+    feasible = [item for item in certified if item.latency_ok]
+    chosen = (
+        min(
+            feasible,
+            key=lambda item: (
+                item.estimated_cost,
+                item.fallback_rate,
+                item.threshold,
+                item.student,
+            ),
+        )
+        if feasible
+        else None
+    )
+    if chosen is not None:
+        status: CertificationStatus = "CERTIFIED"
+    elif not certified:
+        status = "INSUFFICIENT_EVIDENCE"
+    else:
+        status = "NO_FEASIBLE_CONFIG"
+    return {
+        "status": status,
+        "minimum_accuracy": minimum_accuracy,
+        "minimum_recall": minimum_recall,
+        "alpha_accuracy": accuracy_alpha,
+        "alpha_recall": recall_alpha,
+        "family_wise_delta": delta,
+        "per_endpoint_delta": per_endpoint_delta,
+        "multiplicity": "Bonferroni split across accuracy and recall",
+        "candidates": [asdict(item) for item in evaluations],
+        "certified": [asdict(item) for item in certified],
+        "chosen": None if chosen is None else asdict(chosen),
+        "assumptions": [
+            *CERTIFICATION_ASSUMPTIONS,
+            "Accuracy and recall are co-primary endpoints sharing one family-wise error budget.",
+        ],
+    }

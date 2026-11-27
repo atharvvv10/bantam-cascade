@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use Bantam Cascade, please cite this software and the prior work it builds on."
 title: "Bantam Cascade"
 abstract: "Certifies the cheapest small CPU model plus big LLM fallback cascade for text classification against gold labels."
-version: 0.1.0
+version: 0.1.1
 license: Apache-2.0
 type: software
 authors:

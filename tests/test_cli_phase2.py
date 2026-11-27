@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _write_config(tmp_path: Path) -> Path:
     raw = yaml.safe_load((ROOT / "configs" / "banking77.yaml").read_text(encoding="utf-8"))
-    raw["students"] = ["static_embed"]
+    raw["students"] = ["tfidf_baseline"]
     path = tmp_path / "config.yaml"
     path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     return path
@@ -123,7 +123,7 @@ def test_train_students_offline(offline_phase2: tuple[Path, Path]) -> None:
     )
     assert result.exit_code == 0, result.output
     assert "Student training" in result.stdout
-    assert (run_dir / "students" / "static_embed.joblib").is_file()
+    assert (run_dir / "students" / "tfidf_baseline.joblib").is_file()
 
 
 def test_build_cascade_dry_run_is_offline(offline_phase2: tuple[Path, Path]) -> None:
@@ -179,7 +179,7 @@ def test_train_then_build_cascade_offline(offline_phase2: tuple[Path, Path]) -> 
     assert results_path.is_file()
     rows = [json.loads(line) for line in results_path.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
-    assert rows[0]["student"] == "static_embed"
+    assert rows[0]["student"] == "tfidf_baseline"
     assert 0.0 <= rows[0]["accuracy"] <= 1.0
 
 

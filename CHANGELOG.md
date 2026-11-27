@@ -2,6 +2,37 @@
 
 All notable changes to Bantam Cascade are documented here.
 
+## [0.1.1] — revision in preparation
+
+The published `v0.1.0` artifacts are unchanged. This revision adds evidence and
+tooling; no target, threshold, or goalpost is moved.
+
+### Added
+- Cascade-benefit artifacts comparing student alone, teacher alone, and cascade
+  across gold-label budgets on SMS Spam and Banking77.
+- 200-trial Learn-then-Test validity experiment with a naive-threshold control,
+  plus exact-binomial cross-checks, split-sizing via `plan`, a synthetic demo of
+  all three certification statuses, and honest `tinydistill` / `bounded-distill`
+  baselines on the same data.
+- `certify-recall` for pre-registered co-primary accuracy and positive-class
+  recall with a Bonferroni-split family-wise error budget; the fresh seed-43
+  SMS run passes accuracy but returns `INSUFFICIENT_EVIDENCE` for recall.
+- `verify-certificate` and one-command `reproduce` for offline verification of
+  frozen artifacts without a new certification look.
+- `docs/COMPLIANCE.md` with provider provenance and a conservative licensing
+  position; `scripts/scan_secrets.py` for key-shaped strings in tracked files
+  and git history.
+- CI and PyPI badges, a CLI-evidence GIF, an offline Gradio Space scaffold,
+  `docs/BLOG_POST.md`, and a manual TestPyPI publishing workflow.
+
+### Changed
+- Renamed `static_embed` to `tfidf_baseline`; old configs and artifacts remain
+  loadable through a documented legacy alias.
+- Softened the README tagline from "provably meets" to describe the actual
+  finite-sample statistical test and its assumptions.
+- Results, methodology, and limitations docs now report where the cascade does
+  and does not help, including cached-latency and unpaid-quota caveats.
+
 ## [0.1.0] - 2026-11-26
 
 ### Added
