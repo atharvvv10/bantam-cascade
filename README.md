@@ -43,9 +43,11 @@ To make a **new** certificate, copy a config and use a fresh `--run-dir`; run `c
 
 ![Bantam Cascade CLI evidence](https://raw.githubusercontent.com/atharvvv10/bantam-cascade/main/docs/assets/bantam-cascade.gif)
 
-A Gradio Space scaffold is in [`space/`](space/). It shows student-only
-decisions at frozen thresholds; no teacher key, fallback call, or certificate is
-produced in the Space.
+The permanent [Bantam Cascade demo Space](https://huggingface.co/spaces/atharv2204/bantam-cascade)
+shows student-only decisions at frozen thresholds; no teacher key, fallback
+call, or certificate is produced there. The [`space/`](space/) scaffold contains
+the same offline app. The Space runs on Hugging Face's free ZeroGPU tier with an
+unused `@spaces.GPU` startup marker; inference remains CPU-only.
 
 ## Headline result: certified SMS Spam
 

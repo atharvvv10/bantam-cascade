@@ -16,6 +16,8 @@ All notable changes to Bantam Cascade are documented here.
   `pydantic==2.14.4` conflicting with the HF Gradio SDK's `pydantic<=2.12.5`.
   An unused `@spaces.GPU` marker satisfies HF's ZeroGPU startup check without
   changing the CPU-only inference path.
+- Linked the live Hugging Face Space from the README and removed the stale
+  Dockerfile from the Space repository.
 
 ## [0.1.1] - 2026-11-27
 
