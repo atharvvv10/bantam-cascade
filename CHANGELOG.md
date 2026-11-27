@@ -2,7 +2,7 @@
 
 All notable changes to Bantam Cascade are documented here.
 
-## [0.1.1] — revision in preparation
+## [0.1.1] - 2026-11-27
 
 The published `v0.1.0` artifacts are unchanged. This revision adds evidence and
 tooling; no target, threshold, or goalpost is moved.

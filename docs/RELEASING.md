@@ -22,15 +22,18 @@ The pending publisher creates the PyPI project the first time the workflow publi
    with owner `atharvvv10`, repository `bantam-cascade`, workflow
    `publish-testpypi.yml`, and environment `testpypi`.
 2. Run the manual `Publish to TestPyPI` workflow.
-3. Install from TestPyPI in a clean venv and run `bantam-cascade --version` plus
-   `bantam-cascade reproduce --trials 2 --examples 40`.
+3. Install from TestPyPI in a clean venv and run `bantam-cascade --version`,
+   `bantam-cascade plan`, `bantam-cascade validity --trials 2 --examples 40`, and
+   `bantam-cascade status-demo`. `reproduce` also verifies the frozen certificate
+   and therefore needs the git-ignored run artifacts from a full source checkout.
 
-No token is needed; both workflows use short-lived OIDC credentials. On
-2026-11-27 the first TestPyPI dispatch (run `45947996121`) built successfully but
-failed with `invalid-publisher`: TestPyPI has no matching pending publisher yet.
-Configure it with owner `atharvvv10`, repository `bantam-cascade`, workflow
-`publish-testpypi.yml`, environment `testpypi`, then re-run the manual workflow.
-The OIDC subject shown by GitHub was
+No token is needed; both workflows use short-lived OIDC credentials. TestPyPI
+accounts are separate from PyPI accounts. On 2026-11-27 the first dispatch (run
+`45947996121`) failed with `invalid-publisher` because the publisher had been
+configured on PyPI rather than TestPyPI. After creating the TestPyPI account and
+adding the pending publisher there, run `45950924942` succeeded and published
+`0.1.1`. A clean venv install from TestPyPI passed `--version`, `plan`, `validity`,
+and `status-demo`. The OIDC subject is
 `repo:atharvvv10@160210787/bantam-cascade@1469926336:environment:testpypi`; the
 exact claim values are rendered by the workflow for debugging and must match the
 TestPyPI publisher entry.
