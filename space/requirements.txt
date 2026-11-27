@@ -1,4 +1,3 @@
---no-deps
 bantam-cascade @ git+https://github.com/atharvvv10/bantam-cascade.git@v0.1.1
 numpy==2.3.5
 scipy==1.16.3
