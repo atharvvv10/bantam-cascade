@@ -1,8 +1,7 @@
 # Bantam Cascade demo Space
 
-This directory is a self-contained Gradio Space.
+This directory is a self-contained Gradio Space using the Docker SDK.
 
-- `app.py` starts the demo.
 - `Dockerfile` uses Python 3.11, installs `git`, installs
   `bantam-cascade[students]` from tag `v0.1.1`, and sets
   `BANTAM_DEMO_RUN_DIR=/app/run`.

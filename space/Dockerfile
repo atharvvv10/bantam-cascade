@@ -10,4 +10,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY run /app/run
 ENV BANTAM_DEMO_RUN_DIR=/app/run
+EXPOSE 7860
 CMD ["python", "app.py"]
