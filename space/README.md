@@ -5,7 +5,9 @@ This directory is a self-contained Gradio Space.
 - `app.py` starts the demo. If `bantam_cascade` is not installed, it clones the
   pinned `v0.1.1` source tag at startup and imports from `src/`. This avoids
   pip-resolving the released package's pinned `pydantic==2.14.4`, which
-  conflicts with the HF Gradio SDK's `pydantic<=2.12.5`.
+  conflicts with the HF Gradio SDK's `pydantic<=2.12.5`. An unused
+  `@spaces.GPU` marker satisfies HF's ZeroGPU startup check; inference remains
+  CPU-only and the marker is never called.
 - `requirements.txt` lists only the NumPy/SciPy/scikit-learn/joblib packages
   the saved `word_tfidf` student needs.
 - `runs/sms-groq/` contains the frozen `word_tfidf` threshold row and the

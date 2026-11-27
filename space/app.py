@@ -6,7 +6,9 @@ used; the Space shows student-only decisions at frozen thresholds.
 
 When the package is not installed, the pinned source tag is cloned at startup
 and added to ``sys.path``. This keeps the Space free of the released package's
-pinned dependencies, which conflict with the HF Gradio SDK.
+pinned dependencies, which conflict with the HF Gradio SDK. The unused
+``@spaces.GPU`` marker satisfies HF's ZeroGPU startup check without changing
+the CPU-only inference path.
 """
 
 from __future__ import annotations
@@ -16,8 +18,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+import spaces
+
 _REPO_URL = "https://github.com/atharvvv10/bantam-cascade.git"
 _REF = "v0.1.1"
+
+
+@spaces.GPU
+def _zero_gpu_startup_marker() -> str:
+    """Unused marker required by HF ZeroGPU; the demo itself is CPU-only."""
+    return "cpu-only"
 
 
 def _ensure_package() -> None:

@@ -14,6 +14,8 @@ All notable changes to Bantam Cascade are documented here.
   tag from `src/` when the package is not installed, and requirements list only
   the student inference packages. This avoids the released package's pinned
   `pydantic==2.14.4` conflicting with the HF Gradio SDK's `pydantic<=2.12.5`.
+  An unused `@spaces.GPU` marker satisfies HF's ZeroGPU startup check without
+  changing the CPU-only inference path.
 
 ## [0.1.1] - 2026-11-27
 
